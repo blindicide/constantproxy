@@ -11,6 +11,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Using Include="System.IO" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\ConstantProxy.Core\ConstantProxy.Core.csproj" />
     <ProjectReference Include="..\ConstantProxy.Infrastructure\ConstantProxy.Infrastructure.csproj" />
   </ItemGroup>

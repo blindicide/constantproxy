@@ -12,6 +12,7 @@ public enum ConnectionEventType
     Degraded,
     Recovered,
     SshExited,
+    ConnectionLost,
     StartupFailed,
     ConnectionFailed,
     ReconnectScheduled,
@@ -19,6 +20,7 @@ public enum ConnectionEventType
     ReconnectSucceeded,
     ManualDisconnect,
     ApplicationExit,
+    SessionInterrupted,
 }
 
 public sealed record ConnectionEvent(DateTimeOffset TimeUtc, ConnectionEventType Type, string? Detail = null);

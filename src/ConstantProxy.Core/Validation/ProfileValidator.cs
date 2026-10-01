@@ -153,4 +153,35 @@ public static class ProfileValidator
             result.Error(field, "health.reconnectafter", "Reconnect threshold must not be lower than the failure threshold.");
         }
     }
+
+    /// <summary>Validates application-wide settings that are not part of a profile (SPEC §73).</summary>
+    public static ValidationResult ValidateAnalytics(AnalyticsConfig analytics, Func<string, bool>? directoryExists = null)
+    {
+        var result = new ValidationResult();
+        if (analytics.RetentionDays < 0)
+        {
+            result.Error(nameof(AppConfig.Analytics), "retention.invalid", "Retention must be zero (forever) or a positive number of days.");
+        }
+
+        if (analytics.RetentionDays > 36500)
+        {
+            result.Error(nameof(AppConfig.Analytics), "retention.invalid", "Retention is unreasonably long.");
+        }
+
+        var path = analytics.DatabasePath?.Trim() ?? string.Empty;
+        if (path.Length > 0)
+        {
+            var directory = Path.GetDirectoryName(path);
+            if (path.IndexOfAny(Path.GetInvalidPathChars()) >= 0)
+            {
+                result.Error(nameof(AppConfig.Analytics), "database.path", "The database path contains invalid characters.");
+            }
+            else if (!string.IsNullOrEmpty(directory) && !(directoryExists ?? Directory.Exists)(directory))
+            {
+                result.Error(nameof(AppConfig.Analytics), "database.path", "The database folder does not exist.");
+            }
+        }
+
+        return result;
+    }
 }

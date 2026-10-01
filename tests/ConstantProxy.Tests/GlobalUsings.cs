@@ -11,3 +11,5 @@ global using ConstantProxy.Tests.Support;
 global using ConstantProxy.Infrastructure.Network;
 global using ConstantProxy.Core.Traffic;
 global using ConstantProxy.Infrastructure.Traffic;
+global using ConstantProxy.Core.Analytics;
+global using ConstantProxy.Infrastructure.Analytics;

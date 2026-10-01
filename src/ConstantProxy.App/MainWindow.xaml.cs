@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Windows;
+using System.Windows.Controls;
 using ConstantProxy.App.ViewModels;
 
 namespace ConstantProxy.App;
@@ -11,6 +12,17 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+    }
+
+    private void OnTabChanged(object sender, SelectionChangedEventArgs e)
+    {
+        // Only react to the tab control itself, not to combo boxes inside it that raise the same routed event.
+        if (!ReferenceEquals(e.OriginalSource, MainTabs) || DataContext is not MainViewModel viewModel)
+        {
+            return;
+        }
+
+        viewModel.Statistics.SetActive(ReferenceEquals(MainTabs.SelectedItem, StatisticsTab));
     }
 
     protected override async void OnClosing(CancelEventArgs e)
