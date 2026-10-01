@@ -36,7 +36,46 @@ def extract_usage() -> dict:
                 continue
 
     if not last_cost:
-        return {"file": latest, "error": "No cost-state record found yet"}
+        # Fallback to aggregating directly from assistant records
+        in_tok = 0
+        cache_read = 0
+        cache_write = 0
+        out_tok = 0
+        thinking_tok = 0
+        session_id = None
+
+        with open(latest, "r", encoding="utf-8") as f:
+            for line in f:
+                try:
+                    data = json.loads(line)
+                    if not session_id and data.get("sessionId"):
+                        session_id = data.get("sessionId")
+                    if data.get("type") == "assistant":
+                        u = data.get("message", {}).get("usage", {})
+                        in_tok += u.get("input_tokens", 0)
+                        cache_read += u.get("cache_read_input_tokens", 0)
+                        cache_write += u.get("cache_creation_input_tokens", 0)
+                        out_tok += u.get("output_tokens", 0)
+                        details = u.get("output_tokens_details") or {}
+                        thinking_tok += details.get("thinking_tokens", 0)
+                except Exception:
+                    continue
+
+        cost = (in_tok * 3.0 + cache_read * 0.30 + cache_write * 3.75 + out_tok * 15.0) / 1_000_000
+        return {
+            "session_id": session_id,
+            "total_cost_usd": round(cost, 4),
+            "models": {
+                "claude-sonnet-5-5": {
+                    "inputTokens": in_tok,
+                    "outputTokens": out_tok,
+                    "cacheReadInputTokens": cache_read,
+                    "cacheCreationInputTokens": cache_write,
+                    "thinkingTokens": thinking_tok,
+                }
+            },
+            "transcript_file": latest,
+        }
 
     model_usage = last_cost.get("modelUsage", {})
     summary = {

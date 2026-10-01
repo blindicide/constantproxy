@@ -30,6 +30,10 @@ public class ConfigurationServiceTests
         p.AdditionalArguments = new List<string> { "-o", "Compression=yes" };
         p.Reconnect.DelaysSeconds = new List<int> { 0, 4 };
         p.Reconnect.JitterPercent = 20;
+        p.StartupTimeoutSeconds = 33;
+        p.Monitoring.TargetHost = "probe.example";
+        p.Monitoring.TargetPort = 8443;
+        p.Monitoring.ReconnectOnFailure = true;
         config.LogVerbosity = LogVerbosity.Verbose;
 
         service.Save(config);
@@ -46,6 +50,10 @@ public class ConfigurationServiceTests
         Assert.Equal(new[] { "-o", "Compression=yes" }, q.AdditionalArguments);
         Assert.Equal(new[] { 0, 4 }, q.Reconnect.DelaysSeconds);
         Assert.Equal(20, q.Reconnect.JitterPercent);
+        Assert.Equal(33, q.StartupTimeoutSeconds);
+        Assert.Equal("probe.example", q.Monitoring.TargetHost);
+        Assert.Equal(8443, q.Monitoring.TargetPort);
+        Assert.True(q.Monitoring.ReconnectOnFailure);
         Assert.Equal(LogVerbosity.Verbose, loaded.Config.LogVerbosity);
     }
 
