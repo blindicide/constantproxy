@@ -1,7 +1,7 @@
 <Project>
   <PropertyGroup>
     <!-- Single source of truth for the application version (SemVer). Bumped per release. -->
-    <Version>0.7.0</Version>
+    <Version>0.8.0</Version>
     <Authors>constantproxy contributors</Authors>
     <Product>constantproxy</Product>
     <Description>A lightweight Windows supervisor and analytics interface for SSH SOCKS proxies.</Description>

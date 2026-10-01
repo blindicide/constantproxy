@@ -40,6 +40,11 @@ public static class ProfileValidator
             result.Error(nameof(Profile.StartupTimeoutSeconds), "timing.positive", "Startup timeout must be a positive number of seconds.");
         }
 
+        if (profile.AdditionalArguments.Any(a => a.Any(char.IsControl)))
+        {
+            result.Error(nameof(Profile.AdditionalArguments), "args.invalid", "Additional arguments must not contain control characters.");
+        }
+
         ValidateReconnect(profile.Reconnect, result);
         ValidateMonitoring(profile.Monitoring, result);
         return result;
@@ -94,63 +99,68 @@ public static class ProfileValidator
 
     private static void ValidateReconnect(ReconnectSettings r, ValidationResult result)
     {
-        const string field = nameof(Profile.Reconnect);
+        const string prefix = nameof(Profile.Reconnect) + ".";
         if (r.DelaysSeconds.Count == 0 || r.DelaysSeconds.Any(d => d < 0))
         {
-            result.Error(field, "reconnect.delays", "Reconnect delays must be a non-empty list of non-negative seconds.");
+            result.Error(prefix + nameof(ReconnectSettings.DelaysSeconds), "reconnect.delays", "Reconnect delays must be a non-empty list of non-negative seconds.");
         }
         else if (r.DelaysSeconds[^1] < 1)
         {
-            result.Error(field, "reconnect.delays.last", "The final reconnect delay must be at least 1 second to prevent a respawn storm.");
+            result.Error(prefix + nameof(ReconnectSettings.DelaysSeconds), "reconnect.delays.last", "The final reconnect delay must be at least 1 second to prevent a respawn storm.");
         }
 
         if (r.MaxDelaySeconds < 1)
         {
-            result.Error(field, "timing.positive", "Maximum reconnect delay must be positive.");
+            result.Error(prefix + nameof(ReconnectSettings.MaxDelaySeconds), "timing.positive", "Maximum reconnect delay must be positive.");
         }
 
         if (r.HealthyResetSeconds < 1)
         {
-            result.Error(field, "timing.positive", "Healthy reset period must be positive.");
+            result.Error(prefix + nameof(ReconnectSettings.HealthyResetSeconds), "timing.positive", "Healthy reset period must be positive.");
         }
 
         if (r.JitterPercent is < 0 or > 100)
         {
-            result.Error(field, "reconnect.jitter", "Jitter must be between 0 and 100 percent.");
+            result.Error(prefix + nameof(ReconnectSettings.JitterPercent), "reconnect.jitter", "Jitter must be between 0 and 100 percent.");
         }
     }
 
     private static void ValidateMonitoring(HealthCheckSettings m, ValidationResult result)
     {
-        const string field = nameof(Profile.Monitoring);
+        const string prefix = nameof(Profile.Monitoring) + ".";
         if (!m.Enabled)
         {
             return;
         }
 
-        if (m.IntervalSeconds < 1 || m.TimeoutSeconds < 1)
+        if (m.IntervalSeconds < 1)
         {
-            result.Error(field, "timing.positive", "Health-check interval and timeout must be positive.");
+            result.Error(prefix + nameof(HealthCheckSettings.IntervalSeconds), "timing.positive", "Health-check interval must be positive.");
+        }
+
+        if (m.TimeoutSeconds < 1)
+        {
+            result.Error(prefix + nameof(HealthCheckSettings.TimeoutSeconds), "timing.positive", "Health-check timeout must be positive.");
         }
 
         if (string.IsNullOrWhiteSpace(m.TargetHost) || m.TargetHost.Any(c => char.IsWhiteSpace(c) || char.IsControl(c)) || m.TargetHost.Length > 255)
         {
-            result.Error(field, "health.host", "Health-check target host must be a non-empty host name or IP address.");
+            result.Error(prefix + nameof(HealthCheckSettings.TargetHost), "health.host", "Health-check target host must be a non-empty host name or IP address.");
         }
 
         if (m.TargetPort is < 1 or > 65535)
         {
-            result.Error(field, "port.range", "Health-check port must be between 1 and 65535.");
+            result.Error(prefix + nameof(HealthCheckSettings.TargetPort), "port.range", "Health-check port must be between 1 and 65535.");
         }
 
         if (m.FailureThreshold < 1)
         {
-            result.Error(field, "health.threshold", "Failure threshold must be at least 1.");
+            result.Error(prefix + nameof(HealthCheckSettings.FailureThreshold), "health.threshold", "Failure threshold must be at least 1.");
         }
 
         if (m.ReconnectOnFailure && m.ReconnectAfterFailures < m.FailureThreshold)
         {
-            result.Error(field, "health.reconnectafter", "Reconnect threshold must not be lower than the failure threshold.");
+            result.Error(prefix + nameof(HealthCheckSettings.ReconnectAfterFailures), "health.reconnectafter", "Reconnect threshold must not be lower than the failure threshold.");
         }
     }
 
@@ -160,12 +170,12 @@ public static class ProfileValidator
         var result = new ValidationResult();
         if (analytics.RetentionDays < 0)
         {
-            result.Error(nameof(AppConfig.Analytics), "retention.invalid", "Retention must be zero (forever) or a positive number of days.");
+            result.Error(nameof(AnalyticsConfig.RetentionDays), "retention.invalid", "Retention must be zero (forever) or a positive number of days.");
         }
 
         if (analytics.RetentionDays > 36500)
         {
-            result.Error(nameof(AppConfig.Analytics), "retention.invalid", "Retention is unreasonably long.");
+            result.Error(nameof(AnalyticsConfig.RetentionDays), "retention.invalid", "Retention is unreasonably long.");
         }
 
         var path = analytics.DatabasePath?.Trim() ?? string.Empty;
@@ -174,11 +184,11 @@ public static class ProfileValidator
             var directory = Path.GetDirectoryName(path);
             if (path.IndexOfAny(Path.GetInvalidPathChars()) >= 0)
             {
-                result.Error(nameof(AppConfig.Analytics), "database.path", "The database path contains invalid characters.");
+                result.Error(nameof(AnalyticsConfig.DatabasePath), "database.path", "The database path contains invalid characters.");
             }
             else if (!string.IsNullOrEmpty(directory) && !(directoryExists ?? Directory.Exists)(directory))
             {
-                result.Error(nameof(AppConfig.Analytics), "database.path", "The database folder does not exist.");
+                result.Error(nameof(AnalyticsConfig.DatabasePath), "database.path", "The database folder does not exist.");
             }
         }
 
@@ -190,7 +200,7 @@ public static class ProfileValidator
         var result = new ValidationResult();
         if (notifications.MinimumOutageSeconds is < 0 or > 86400)
         {
-            result.Error(nameof(AppConfig.Notifications), "notify.minoutage", "The minimum outage duration must be between 0 seconds and 24 hours.");
+            result.Error(nameof(NotificationConfig.MinimumOutageSeconds), "notify.minoutage", "The minimum outage duration must be between 0 seconds and 24 hours.");
         }
 
         return result;

@@ -166,7 +166,7 @@ public class ProfileValidatorTests
         var p = Valid();
         p.Monitoring.TargetHost = host;
         p.Monitoring.TargetPort = port;
-        Assert.Contains(Check(p).Errors, i => i.Code == code && i.Field == nameof(Profile.Monitoring));
+        Assert.Contains(Check(p).Errors, i => i.Code == code && i.Field.StartsWith("Monitoring.", StringComparison.Ordinal));
     }
 
     [Fact]

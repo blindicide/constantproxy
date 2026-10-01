@@ -13,7 +13,7 @@ public class ResourceCompletenessTests
     private static readonly HashSet<string> IdenticalByDesign = new()
     {
         "label.socks", "label.aliveInterval", "label.aliveCountMax", "language.en", "language.ru",
-        "tray.tooltip", "stats.traffic.pair",
+        "tray.tooltip", "stats.traffic.pair", "button.ok",
     };
 
     [Fact]
@@ -212,6 +212,28 @@ public class ResourceUsageTests
 
         Assert.Empty(missing);
         Assert.True(found > 0 || !SourceFiles("MainWindow.xaml").Any(), "MainWindow.xaml should use localized keys");
+    }
+
+    [Fact]
+    public void NoUserVisibleTextIsHardcodedInXaml()
+    {
+        // SPEC §29: user-visible text must come from the resources. Brand names and pure symbols are allowed.
+        var allowed = new HashSet<string> { "constantproxy" };
+        var attribute = new Regex("\\b(Content|Text|Header|Title|ToolTip|EmptyText)=\"([^\"{][^\"]*)\"", RegexOptions.Compiled);
+        var offenders = new List<string>();
+        foreach (var file in SourceFiles("*.xaml").Where(f => !f.EndsWith("App.xaml", StringComparison.Ordinal)))
+        {
+            foreach (Match m in attribute.Matches(File.ReadAllText(file)))
+            {
+                var value = m.Groups[2].Value;
+                if (value.Any(char.IsLetter) && !allowed.Contains(value.Trim()))
+                {
+                    offenders.Add($"{Path.GetFileName(file)}: {m.Groups[1].Value}=\"{value}\"");
+                }
+            }
+        }
+
+        Assert.Empty(offenders);
     }
 
     [Fact]

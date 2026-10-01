@@ -1,0 +1,24 @@
+<Window x:Class="ConstantProxy.App.Views.AboutWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:loc="clr-namespace:ConstantProxy.App"
+        Title="{loc:Loc about.title}" Icon="pack://application:,,,/constantproxy.ico" Width="460" SizeToContent="Height" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False" UseLayoutRounding="True">
+    <StackPanel Margin="20">
+        <StackPanel Orientation="Horizontal">
+            <Image Source="pack://application:,,,/constantproxy.ico" Width="48" Height="48" Margin="0,0,14,0" />
+            <StackPanel VerticalAlignment="Center">
+                <TextBlock Text="constantproxy" FontSize="22" FontWeight="SemiBold" />
+                <TextBlock x:Name="VersionText" Opacity="0.8" />
+            </StackPanel>
+        </StackPanel>
+        <TextBlock Text="{loc:Loc about.description}" TextWrapping="Wrap" Margin="0,16,0,0" />
+        <TextBlock Text="{loc:Loc about.openssh}" TextWrapping="Wrap" Margin="0,8,0,0" Opacity="0.85" />
+        <TextBlock Text="{loc:Loc about.privacy}" TextWrapping="Wrap" Margin="0,8,0,0" Opacity="0.85" />
+        <TextBlock x:Name="LicenseText" Margin="0,12,0,0" />
+        <TextBlock Margin="0,4,0,0">
+            <Hyperlink x:Name="RepositoryLink" RequestNavigate="OnNavigate"><TextBlock Text="{loc:Loc about.repository}" /></Hyperlink>
+        </TextBlock>
+        <Button Content="{loc:Loc diag.close}" IsDefault="True" IsCancel="True" HorizontalAlignment="Right" Padding="16,5" MinWidth="84" Margin="0,16,0,0" />
+    </StackPanel>
+</Window>
