@@ -4,6 +4,7 @@
         Title="constantproxy" Width="460" Height="560" MinWidth="400" MinHeight="420"
         WindowStartupLocation="CenterScreen" UseLayoutRounding="True">
     <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
         <Style TargetType="TextBox">
             <Setter Property="Margin" Value="0,2,0,6" />
             <Setter Property="Padding" Value="3" />
@@ -46,7 +47,14 @@
                     <TextBlock Text="{Binding Endpoint}" FontFamily="Consolas" />
                     <TextBlock Text="    Reconnects " FontWeight="SemiBold" />
                     <TextBlock Text="{Binding ReconnectCount}" />
+                    <TextBlock Text="    Latency " FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding LatencyText}" />
                 </StackPanel>
+
+                <Expander Header="Details" Margin="0,6,0,0" Visibility="{Binding HasFailureDetails, Converter={StaticResource BoolToVisibility}}">
+                    <TextBox Text="{Binding FailureDetails, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" MaxHeight="90"
+                             VerticalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="11" />
+                </Expander>
 
                 <Expander Header="Connection settings" Margin="0,14,0,0" IsExpanded="True">
                     <StackPanel Margin="0,6,0,0">
@@ -86,6 +94,21 @@
                         <TextBox x:Name="ExtraBox" Text="{Binding AdditionalArguments, UpdateSourceTrigger=PropertyChanged}" />
                         <CheckBox Content="IPv4 only (-4)" IsChecked="{Binding IPv4Only}" Margin="0,2,0,4" />
                         <CheckBox Content="Reconnect automatically" IsChecked="{Binding AutoReconnect}" Margin="0,0,0,4" />
+                        <CheckBox Content="Health checks through the proxy" IsChecked="{Binding HealthEnabled}" Margin="0,0,0,4" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="90" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Margin="0,0,8,0">
+                                <Label Content="Health-check target host" Target="{Binding ElementName=HealthHostBox}" Padding="0" />
+                                <TextBox x:Name="HealthHostBox" Text="{Binding HealthHost, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1">
+                                <Label Content="Port" Target="{Binding ElementName=HealthPortBox}" Padding="0" />
+                                <TextBox x:Name="HealthPortBox" Text="{Binding HealthPort, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                        </Grid>
                         <TextBlock Text="{Binding ValidationText}" Foreground="Firebrick" TextWrapping="Wrap" />
                     </StackPanel>
                 </Expander>

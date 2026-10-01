@@ -110,10 +110,18 @@ public sealed class ScriptedVerifier : IStartupVerifier
 
     public StartupOutcome Outcome { get; set; } = StartupOutcome.Ready;
 
+    /// <summary>Lets a test make the process print something (for example an ssh error) before the outcome is reported.</summary>
+    public Action<FakeProcess>? BeforeOutcome { get; set; }
+
     public Task<StartupOutcome> WaitUntilReadyAsync(StartupContext context, CancellationToken cancellationToken)
     {
         if (!Block)
         {
+            if (context.Process is FakeProcess scripted)
+            {
+                BeforeOutcome?.Invoke(scripted);
+            }
+
             if (Outcome == StartupOutcome.ProcessExited && context.Process is FakeProcess fake)
             {
                 fake.Exit(1); // keep the fake consistent with what the verifier reports
@@ -142,5 +150,61 @@ public static class TestWait
 
             await Task.Delay(5);
         }
+    }
+}
+
+public sealed class FakePortProbe : IPortProbe
+{
+    public PortStatus Status { get; set; } = PortStatus.Free;
+
+    /// <summary>Optional per-call script; when exhausted, <see cref="Status"/> is used.</summary>
+    public Queue<PortStatus> Script { get; } = new();
+
+    public int Calls { get; private set; }
+
+    public PortStatus Check(System.Net.IPAddress address, int port)
+    {
+        Calls++;
+        return Script.Count > 0 ? Script.Dequeue() : Status;
+    }
+}
+
+/// <summary>Probe returning queued results; once the queue is empty it waits (until cancelled) so tests stay bounded.</summary>
+public sealed class FakeSocksProbe : ISocksProbe
+{
+    private readonly object gate = new();
+    private readonly Queue<SocksProbeResult> results = new();
+    private int calls;
+
+    public int Calls { get { lock (gate) { return calls; } } }
+
+    public List<(string Address, int Port, string Host, int HostPort, TimeSpan Timeout)> Requests { get; } = new();
+
+    public void Enqueue(params SocksProbeResult[] items)
+    {
+        lock (gate)
+        {
+            foreach (var item in items)
+            {
+                results.Enqueue(item);
+            }
+        }
+    }
+
+    public Task<SocksProbeResult> ProbeAsync(string proxyAddress, int proxyPort, string targetHost, int targetPort, TimeSpan timeout, CancellationToken cancellationToken)
+    {
+        lock (gate)
+        {
+            calls++;
+            Requests.Add((proxyAddress, proxyPort, targetHost, targetPort, timeout));
+            if (results.Count > 0)
+            {
+                return Task.FromResult(results.Dequeue());
+            }
+        }
+
+        var tcs = new TaskCompletionSource<SocksProbeResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        cancellationToken.Register(() => tcs.TrySetCanceled(cancellationToken));
+        return tcs.Task;
     }
 }

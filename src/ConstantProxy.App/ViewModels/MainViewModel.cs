@@ -33,6 +33,8 @@ public sealed class MainViewModel : ObservableObject
     private string validationText = string.Empty;
     private string logText = string.Empty;
     private int reconnectCount;
+    private string latencyText = "-";
+    private string failureDetails = string.Empty;
     private bool closing;
 
     private string host;
@@ -44,6 +46,9 @@ public sealed class MainViewModel : ObservableObject
     private string serverAliveCountMax;
     private string additionalArguments;
     private bool autoReconnect;
+    private bool healthEnabled;
+    private string healthHost;
+    private string healthPort;
 
     public MainViewModel(ConnectionManager manager, ConfigurationService configuration, AppConfig config, AppLog log, Dispatcher dispatcher)
     {
@@ -63,12 +68,16 @@ public sealed class MainViewModel : ObservableObject
         serverAliveCountMax = p.ServerAliveCountMax.ToString(CultureInfo.InvariantCulture);
         additionalArguments = CommandLineSplitter.Join(p.AdditionalArguments);
         autoReconnect = p.Reconnect.Enabled;
+        healthEnabled = p.Monitoring.Enabled;
+        healthHost = p.Monitoring.TargetHost;
+        healthPort = p.Monitoring.TargetPort.ToString(CultureInfo.InvariantCulture);
 
         ConnectCommand = new RelayCommand(ConnectAsync, () => State is ConnectionState.Disconnected or ConnectionState.Failed);
         DisconnectCommand = new RelayCommand(manager.DisconnectAsync, () => State != ConnectionState.Disconnected);
         ReconnectCommand = new RelayCommand(async () => { await manager.ReconnectNowAsync(); }, () => State is ConnectionState.Connecting or ConnectionState.Connected or ConnectionState.Degraded or ConnectionState.Reconnecting);
 
         manager.StateChanged += change => dispatcher.BeginInvoke(() => OnStateChanged(change));
+        manager.HealthChecked += _ => dispatcher.BeginInvoke(RefreshSession);
         log.EntryAdded += entry => dispatcher.BeginInvoke(() => AppendLog(entry));
         foreach (var entry in log.Snapshot())
         {
@@ -158,6 +167,27 @@ public sealed class MainViewModel : ObservableObject
         private set => SetProperty(ref reconnectCount, value);
     }
 
+    public string LatencyText
+    {
+        get => latencyText;
+        private set => SetProperty(ref latencyText, value);
+    }
+
+    /// <summary>Technical details of the last failure, shown in an expandable section (SPEC §34).</summary>
+    public string FailureDetails
+    {
+        get => failureDetails;
+        private set
+        {
+            if (SetProperty(ref failureDetails, value))
+            {
+                OnPropertyChanged(nameof(HasFailureDetails));
+            }
+        }
+    }
+
+    public bool HasFailureDetails => !string.IsNullOrWhiteSpace(FailureDetails);
+
     public string Endpoint => string.IsNullOrWhiteSpace(Host) ? "-" : SshArgumentBuilder.FormatEndpoint(BindAddress, int.TryParse(Port, out var p) ? p : 0);
 
     public string Host { get => host; set { if (SetProperty(ref host, value)) { OnPropertyChanged(nameof(Endpoint)); } } }
@@ -177,6 +207,12 @@ public sealed class MainViewModel : ObservableObject
     public string AdditionalArguments { get => additionalArguments; set => SetProperty(ref additionalArguments, value); }
 
     public bool AutoReconnect { get => autoReconnect; set => SetProperty(ref autoReconnect, value); }
+
+    public bool HealthEnabled { get => healthEnabled; set => SetProperty(ref healthEnabled, value); }
+
+    public string HealthHost { get => healthHost; set => SetProperty(ref healthHost, value); }
+
+    public string HealthPort { get => healthPort; set => SetProperty(ref healthPort, value); }
 
     /// <summary>Called when the window is closing: stop the tunnel (killing only our own ssh) before exiting.</summary>
     public async Task ShutdownAsync()
@@ -221,6 +257,12 @@ public sealed class MainViewModel : ObservableObject
             countMax = p.ServerAliveCountMax;
         }
 
+        if (!int.TryParse(HealthPort, NumberStyles.Integer, CultureInfo.InvariantCulture, out var healthPortValue))
+        {
+            errors.Add("Health-check port must be a number.");
+            healthPortValue = p.Monitoring.TargetPort;
+        }
+
         var candidate = p.Clone();
         candidate.Host = Host.Trim();
         candidate.BindAddress = BindAddress.Trim();
@@ -231,6 +273,9 @@ public sealed class MainViewModel : ObservableObject
         candidate.ServerAliveCountMax = countMax;
         candidate.AdditionalArguments = CommandLineSplitter.Split(AdditionalArguments);
         candidate.Reconnect.Enabled = AutoReconnect;
+        candidate.Monitoring.Enabled = HealthEnabled;
+        candidate.Monitoring.TargetHost = HealthHost.Trim();
+        candidate.Monitoring.TargetPort = healthPortValue;
 
         var result = ProfileValidator.Validate(candidate);
         errors.AddRange(result.Errors.Select(i => i.Message));
@@ -278,9 +323,11 @@ public sealed class MainViewModel : ObservableObject
         {
             ConnectionState.Failed => change.Failure?.Message ?? string.Empty,
             ConnectionState.Reconnecting => change.Failure?.Message ?? "Reconnecting…",
+            ConnectionState.Degraded => "Health checks are failing; the SOCKS proxy may not be passing traffic.",
             ConnectionState.Connected or ConnectionState.Disconnected => string.Empty,
             _ => StatusDetail,
         };
+        FailureDetails = change.New is ConnectionState.Failed or ConnectionState.Reconnecting ? change.Failure?.Details ?? string.Empty : string.Empty;
 
         if (change.New is ConnectionState.Disconnected)
         {
@@ -298,6 +345,9 @@ public sealed class MainViewModel : ObservableObject
     private void RefreshSession()
     {
         ReconnectCount = manager.ReconnectCount;
+        LatencyText = State is ConnectionState.Connected or ConnectionState.Degraded && manager.LastHealth is { Success: true, Latency: { } latency }
+            ? $"{latency.TotalMilliseconds:0} ms"
+            : "-";
         var started = manager.SessionStartedUtc;
         if (started is not null)
         {

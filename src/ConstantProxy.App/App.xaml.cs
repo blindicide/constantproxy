@@ -6,6 +6,7 @@ using ConstantProxy.Core.Connection;
 using ConstantProxy.Core.Logging;
 using ConstantProxy.Infrastructure.Config;
 using ConstantProxy.Infrastructure.Logging;
+using ConstantProxy.Infrastructure.Network;
 using ConstantProxy.Infrastructure.Ssh;
 
 namespace ConstantProxy.App;
@@ -47,9 +48,11 @@ public partial class App : Application
 
         var manager = new ConnectionManager(
             new SshProcessLauncher(),
-            new ProcessAliveStartupVerifier(SystemClock.Instance, TimeSpan.FromSeconds(2)),
+            new ListenerStartupVerifier(SystemClock.Instance),
             SystemClock.Instance,
-            log);
+            log,
+            portProbe: new TcpPortProbe(),
+            socksProbe: new Socks5Probe());
 
         var viewModel = new MainViewModel(manager, configService, load.Config, log, Dispatcher);
         var window = new MainWindow { DataContext = viewModel };

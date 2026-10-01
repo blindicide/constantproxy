@@ -34,13 +34,19 @@ public sealed class Profile
     /// <summary>Extra arguments inserted before the target, one list entry per process argument.</summary>
     public List<string> AdditionalArguments { get; set; } = new();
 
+    /// <summary>How long to wait for the SOCKS listener to appear before the attempt counts as failed (SPEC §13).</summary>
+    public int StartupTimeoutSeconds { get; set; } = 15;
+
     public ReconnectSettings Reconnect { get; set; } = new();
+
+    public HealthCheckSettings Monitoring { get; set; } = new();
 
     public Profile Clone()
     {
         var copy = (Profile)MemberwiseClone();
         copy.AdditionalArguments = new List<string>(AdditionalArguments);
         copy.Reconnect = Reconnect.Clone();
+        copy.Monitoring = Monitoring.Clone();
         return copy;
     }
 }

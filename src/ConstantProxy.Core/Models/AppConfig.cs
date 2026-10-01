@@ -34,11 +34,13 @@ public sealed class AppConfig
         {
             p.Reconnect ??= new ReconnectSettings();
             p.Reconnect.DelaysSeconds ??= new List<int>();
+            p.Monitoring ??= new HealthCheckSettings();
             p.AdditionalArguments ??= new List<string>();
             p.Name ??= string.Empty;
             p.Host ??= string.Empty;
             p.BindAddress ??= string.Empty;
             p.SshExecutable ??= string.Empty;
+            p.Monitoring.TargetHost ??= string.Empty;
             if (p.Id == Guid.Empty)
             {
                 p.Id = Guid.NewGuid();

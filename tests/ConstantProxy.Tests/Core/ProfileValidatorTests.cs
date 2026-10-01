@@ -135,4 +135,68 @@ public class ProfileValidatorTests
         p.Name = " ";
         Assert.Contains(Check(p).Errors, i => i.Code == "profile.name.empty");
     }
+
+    [Fact]
+    public void StartupTimeoutMustBePositive()
+    {
+        var p = Valid();
+        p.StartupTimeoutSeconds = 0;
+        Assert.Contains(Check(p).Errors, i => i.Field == nameof(Profile.StartupTimeoutSeconds));
+    }
+
+    [Fact]
+    public void HealthCheckDefaultsAreValidAndNeutral()
+    {
+        var m = new Profile().Monitoring;
+        Assert.True(m.Enabled);
+        Assert.Equal(10, m.IntervalSeconds);
+        Assert.Equal(5, m.TimeoutSeconds);
+        Assert.Equal(3, m.FailureThreshold);
+        Assert.False(m.ReconnectOnFailure);
+        Assert.True(Check(Valid()).IsValid);
+    }
+
+    [Theory]
+    [InlineData("", 443, "health.host")]
+    [InlineData("bad host", 443, "health.host")]
+    [InlineData("example.com", 0, "port.range")]
+    [InlineData("example.com", 70000, "port.range")]
+    public void HealthTargetIsValidated(string host, int port, string code)
+    {
+        var p = Valid();
+        p.Monitoring.TargetHost = host;
+        p.Monitoring.TargetPort = port;
+        Assert.Contains(Check(p).Errors, i => i.Code == code && i.Field == nameof(Profile.Monitoring));
+    }
+
+    [Fact]
+    public void HealthTimingAndThresholdsAreValidated()
+    {
+        var p = Valid();
+        p.Monitoring.IntervalSeconds = 0;
+        p.Monitoring.FailureThreshold = 0;
+        var codes = Check(p).Errors.Select(i => i.Code).ToList();
+        Assert.Contains("timing.positive", codes);
+        Assert.Contains("health.threshold", codes);
+    }
+
+    [Fact]
+    public void ReconnectThresholdMayNotBeBelowTheFailureThreshold()
+    {
+        var p = Valid();
+        p.Monitoring.ReconnectOnFailure = true;
+        p.Monitoring.FailureThreshold = 5;
+        p.Monitoring.ReconnectAfterFailures = 3;
+        Assert.Contains(Check(p).Errors, i => i.Code == "health.reconnectafter");
+    }
+
+    [Fact]
+    public void DisabledHealthCheckingSkipsItsValidation()
+    {
+        var p = Valid();
+        p.Monitoring.Enabled = false;
+        p.Monitoring.TargetHost = "";
+        p.Monitoring.IntervalSeconds = 0;
+        Assert.True(Check(p).IsValid);
+    }
 }

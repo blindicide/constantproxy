@@ -1,3 +1,5 @@
+using System.Net;
+
 namespace ConstantProxy.Core.Connection;
 
 /// <summary>
@@ -14,6 +16,8 @@ public sealed class ConnectionManager : IAsyncDisposable
     private readonly IClock clock;
     private readonly IAppLog log;
     private readonly Func<double> random;
+    private readonly IPortProbe? portProbe;
+    private readonly ISocksProbe? socksProbe;
     private readonly ConnectionStateMachine machine;
     private readonly SemaphoreSlim commandGate = new(1, 1);
     private readonly object sync = new();
@@ -24,14 +28,21 @@ public sealed class ConnectionManager : IAsyncDisposable
     private DateTimeOffset? sessionStartedUtc;
     private DateTimeOffset? connectedSinceUtc;
     private int reconnectCount;
+    private HealthCheckResult? lastHealth;
+    private TimeSpan? averageLatency;
+    private int healthFailureCount;
 
     public ConnectionManager(
         ISshProcessLauncher launcher,
         IStartupVerifier verifier,
         IClock? clock = null,
         IAppLog? log = null,
-        Func<double>? random = null)
+        Func<double>? random = null,
+        IPortProbe? portProbe = null,
+        ISocksProbe? socksProbe = null)
     {
+        this.portProbe = portProbe;
+        this.socksProbe = socksProbe;
         this.launcher = launcher;
         this.verifier = verifier;
         this.clock = clock ?? SystemClock.Instance;
@@ -48,6 +59,9 @@ public sealed class ConnectionManager : IAsyncDisposable
     public event Action<StateChange>? StateChanged;
 
     public event Action<ConnectionEvent>? EventRaised;
+
+    /// <summary>Raised after every health probe (success or failure).</summary>
+    public event Action<HealthCheckResult>? HealthChecked;
 
     /// <summary>How long ssh gets to exit after a polite stop request before it is killed.</summary>
     public TimeSpan StopGracePeriod { get; set; } = TimeSpan.FromSeconds(2);
@@ -71,6 +85,23 @@ public sealed class ConnectionManager : IAsyncDisposable
     public int ReconnectCount
     {
         get { lock (sync) { return reconnectCount; } }
+    }
+
+    /// <summary>The most recent health probe of the current session, if any.</summary>
+    public HealthCheckResult? LastHealth
+    {
+        get { lock (sync) { return lastHealth; } }
+    }
+
+    public TimeSpan? AverageLatency
+    {
+        get { lock (sync) { return averageLatency; } }
+    }
+
+    /// <summary>Failed health probes in the current session.</summary>
+    public int HealthFailureCount
+    {
+        get { lock (sync) { return healthFailureCount; } }
     }
 
     public Profile? ActiveProfile
@@ -98,6 +129,9 @@ public sealed class ConnectionManager : IAsyncDisposable
                 sessionStartedUtc = clock.UtcNow;
                 connectedSinceUtc = null;
                 reconnectCount = 0;
+                lastHealth = null;
+                averageLatency = null;
+                healthFailureCount = 0;
             }
 
             Volatile.Write(ref lastFailure, null);
@@ -297,6 +331,13 @@ public sealed class ConnectionManager : IAsyncDisposable
         var profile = r.Profile;
         var spec = new SshLaunchSpec(profile.SshExecutable, SshArgumentBuilder.Build(profile));
 
+        var portFailure = CheckLocalPort(profile, attempt);
+        if (portFailure is not null)
+        {
+            Raise(ConnectionEventType.StartupFailed, portFailure.Code);
+            return portFailure.Retryable ? AttemptResult.Retry(portFailure, manual: false) : AttemptResult.Failed(portFailure);
+        }
+
         ISshProcess process;
         try
         {
@@ -339,14 +380,9 @@ public sealed class ConnectionManager : IAsyncDisposable
 
             // Process exited or startup timed out before the tunnel became usable.
             await RecordExitAsync(process, info, wait: startup == StartupWaitResult.Exited).ConfigureAwait(false);
-            var failure = new FailureInfo(
-                FailureCategory.Unknown,
-                startup == StartupWaitResult.TimedOut ? "startup.timeout" : "ssh.exited",
-                startup == StartupWaitResult.TimedOut ? "The SOCKS tunnel did not become available in time." : "The SSH process ended during startup.",
-                Retryable: true,
-                Details: tail.AsText());
+            var failure = FailureClassifier.Classify(new FailureContext(FailureStage.Startup, info.ExitCode, tail.AsText(), ListenerWasReady: false, profile.Port));
             Raise(ConnectionEventType.StartupFailed, failure.Code);
-            return AttemptResult.Retry(failure, manual: false);
+            return failure.Retryable ? AttemptResult.Retry(failure, manual: false) : AttemptResult.Failed(failure);
         }
         finally
         {
@@ -390,6 +426,7 @@ public sealed class ConnectionManager : IAsyncDisposable
 
     private async Task<AttemptResult> MonitorAsync(Run r, ReconnectPolicy policy, ISshProcess process, ProcessInfo info, int attempt, OutputTail tail, CancellationToken ct)
     {
+        var profile = r.Profile;
         var connectedAt = clock.UtcNow;
         if (!machine.TryTransition(ConnectionState.Connected))
         {
@@ -409,21 +446,131 @@ public sealed class ConnectionManager : IAsyncDisposable
             Raise(ConnectionEventType.ReconnectSucceeded, $"after {attempt} attempt(s)");
         }
 
+        var health = profile.Monitoring;
+        var evaluator = socksProbe is not null && health.Enabled ? new HealthCheckEvaluator(health) : null;
+        var probeAddress = ProbeAddress(profile);
+        var neverCompletes = new TaskCompletionSource().Task;
+
         var cancelled = new TaskCompletionSource();
         using var registration = ct.Register(() => cancelled.TrySetResult());
-        var finished = await Task.WhenAny(process.Exited, r.Signal, cancelled.Task).ConfigureAwait(false);
 
-        if (finished == r.Signal)
+        while (true)
         {
-            r.ResetSignal();
-            return AttemptResult.Retry(null, manual: true);
+            using var stepCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            var tick = evaluator is null ? neverCompletes : clock.Delay(TimeSpan.FromSeconds(health.IntervalSeconds), stepCts.Token);
+            var finished = await Task.WhenAny(process.Exited, r.Signal, cancelled.Task, tick).ConfigureAwait(false);
+
+            if (finished == tick && evaluator is not null)
+            {
+                var probe = socksProbe!.ProbeAsync(probeAddress, profile.Port, health.TargetHost, health.TargetPort, TimeSpan.FromSeconds(health.TimeoutSeconds), stepCts.Token);
+                finished = await Task.WhenAny(process.Exited, r.Signal, cancelled.Task, probe).ConfigureAwait(false);
+                if (finished == probe)
+                {
+                    var transition = RecordHealth(evaluator, await probe.ConfigureAwait(false));
+                    if (transition == HealthTransition.Reconnect)
+                    {
+                        policy.RegisterConnectionEnded(clock.UtcNow - connectedAt);
+                        return AttemptResult.Retry(FailureClassifier.Classify(new FailureContext(FailureStage.HealthCheck, null, string.Empty, ListenerWasReady: true, profile.Port)), manual: false);
+                    }
+
+                    continue;
+                }
+
+                await stepCts.CancelAsync().ConfigureAwait(false);
+                await ObserveAsync(probe).ConfigureAwait(false);
+            }
+            else
+            {
+                await stepCts.CancelAsync().ConfigureAwait(false);
+                if (evaluator is not null)
+                {
+                    await ObserveAsync(tick).ConfigureAwait(false);
+                }
+            }
+
+            if (finished == r.Signal)
+            {
+                r.ResetSignal();
+                return AttemptResult.Retry(null, manual: true);
+            }
+
+            ct.ThrowIfCancellationRequested();
+            await RecordExitAsync(process, info, wait: true).ConfigureAwait(false);
+            policy.RegisterConnectionEnded(clock.UtcNow - connectedAt);
+            var failure = FailureClassifier.Classify(new FailureContext(FailureStage.Running, info.ExitCode, tail.AsText(), ListenerWasReady: true, profile.Port));
+            return failure.Retryable ? AttemptResult.Retry(failure, manual: false) : AttemptResult.Failed(failure);
+        }
+    }
+
+    private HealthTransition RecordHealth(HealthCheckEvaluator evaluator, SocksProbeResult result)
+    {
+        var check = new HealthCheckResult(clock.UtcNow, result.Success, result.Latency, result.Detail ?? (result.Success ? null : result.Failure.ToString()));
+        var transition = evaluator.Record(result);
+        lock (sync)
+        {
+            lastHealth = check;
+            averageLatency = evaluator.AverageLatency;
+            if (!result.Success)
+            {
+                healthFailureCount++;
+            }
         }
 
-        ct.ThrowIfCancellationRequested();
-        await RecordExitAsync(process, info, wait: true).ConfigureAwait(false);
-        policy.RegisterConnectionEnded(clock.UtcNow - connectedAt);
-        var failure = new FailureInfo(FailureCategory.Unknown, "ssh.exited", $"The SSH process exited unexpectedly (code {info.ExitCode}).", Retryable: true, Details: tail.AsText());
-        return AttemptResult.Retry(failure, manual: false);
+        if (result.Success)
+        {
+            log.Debug(Source, $"Health check ok ({result.Latency?.TotalMilliseconds:0} ms)");
+        }
+        else
+        {
+            log.Warn(Source, $"Health check failed ({check.Error}); {evaluator.ConsecutiveFailures} consecutive");
+            Raise(ConnectionEventType.HealthCheckFailed, check.Error);
+        }
+
+        HealthChecked?.Invoke(check);
+
+        switch (transition)
+        {
+            case HealthTransition.Degrade when machine.TryTransition(ConnectionState.Degraded):
+                Raise(ConnectionEventType.Degraded, $"{evaluator.ConsecutiveFailures} consecutive health-check failures");
+                break;
+            case HealthTransition.Recover when machine.TryTransition(ConnectionState.Connected):
+                Raise(ConnectionEventType.Recovered);
+                break;
+        }
+
+        return transition;
+    }
+
+    private FailureInfo? CheckLocalPort(Profile profile, int attempt)
+    {
+        if (portProbe is null)
+        {
+            return null;
+        }
+
+        var status = portProbe.Check(IPAddress.Parse(profile.BindAddress.Trim().Trim('[', ']')), profile.Port);
+        switch (status)
+        {
+            case PortStatus.InUse:
+                // On the very first attempt this is a local configuration problem; on a reconnect our own previous ssh may
+                // still be releasing the port, so back off and try again instead of giving up.
+                return FailureClassifier.PortInUse(profile.Port, retryable: attempt > 0);
+            case PortStatus.AccessDenied:
+                return FailureClassifier.PortAccessDenied(profile.Port);
+            default:
+                return null;
+        }
+    }
+
+    private static string ProbeAddress(Profile profile)
+    {
+        var address = IPAddress.Parse(profile.BindAddress.Trim().Trim('[', ']'));
+        if (address.Equals(IPAddress.Any))
+        {
+            return IPAddress.Loopback.ToString();
+        }
+
+        return address.Equals(IPAddress.IPv6Any) ? IPAddress.IPv6Loopback.ToString() : address.ToString();
     }
 
     private async Task RecordExitAsync(ISshProcess process, ProcessInfo info, bool wait)
@@ -461,7 +608,7 @@ public sealed class ConnectionManager : IAsyncDisposable
         await Task.WhenAny(process.Exited, clock.Delay(TimeSpan.FromSeconds(5), CancellationToken.None)).ConfigureAwait(false);
     }
 
-    private static TimeSpan StartupTimeout(Profile profile) => TimeSpan.FromSeconds(15);
+    private static TimeSpan StartupTimeout(Profile profile) => TimeSpan.FromSeconds(Math.Max(profile.StartupTimeoutSeconds, 1));
 
     private static FailureInfo MapLaunchFailure(SshLaunchException ex) => ex.Kind switch
     {

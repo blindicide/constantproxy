@@ -21,4 +21,8 @@ public sealed record FailureInfo(
     string Code,
     string Message,
     bool Retryable,
-    string? Details = null);
+    string? Details = null)
+{
+    /// <summary>Values substituted into the localized message (for example the port number).</summary>
+    public IReadOnlyList<string> Arguments { get; init; } = Array.Empty<string>();
+}

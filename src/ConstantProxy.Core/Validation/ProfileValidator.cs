@@ -35,7 +35,13 @@ public static class ProfileValidator
             result.Error(nameof(Profile.ServerAliveCountMax), "timing.positive", "ServerAliveCountMax must be a positive number.");
         }
 
+        if (profile.StartupTimeoutSeconds < 1)
+        {
+            result.Error(nameof(Profile.StartupTimeoutSeconds), "timing.positive", "Startup timeout must be a positive number of seconds.");
+        }
+
         ValidateReconnect(profile.Reconnect, result);
+        ValidateMonitoring(profile.Monitoring, result);
         return result;
     }
 
@@ -111,6 +117,40 @@ public static class ProfileValidator
         if (r.JitterPercent is < 0 or > 100)
         {
             result.Error(field, "reconnect.jitter", "Jitter must be between 0 and 100 percent.");
+        }
+    }
+
+    private static void ValidateMonitoring(HealthCheckSettings m, ValidationResult result)
+    {
+        const string field = nameof(Profile.Monitoring);
+        if (!m.Enabled)
+        {
+            return;
+        }
+
+        if (m.IntervalSeconds < 1 || m.TimeoutSeconds < 1)
+        {
+            result.Error(field, "timing.positive", "Health-check interval and timeout must be positive.");
+        }
+
+        if (string.IsNullOrWhiteSpace(m.TargetHost) || m.TargetHost.Any(c => char.IsWhiteSpace(c) || char.IsControl(c)) || m.TargetHost.Length > 255)
+        {
+            result.Error(field, "health.host", "Health-check target host must be a non-empty host name or IP address.");
+        }
+
+        if (m.TargetPort is < 1 or > 65535)
+        {
+            result.Error(field, "port.range", "Health-check port must be between 1 and 65535.");
+        }
+
+        if (m.FailureThreshold < 1)
+        {
+            result.Error(field, "health.threshold", "Failure threshold must be at least 1.");
+        }
+
+        if (m.ReconnectOnFailure && m.ReconnectAfterFailures < m.FailureThreshold)
+        {
+            result.Error(field, "health.reconnectafter", "Reconnect threshold must not be lower than the failure threshold.");
         }
     }
 }

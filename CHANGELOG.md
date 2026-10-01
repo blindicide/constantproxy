@@ -4,6 +4,17 @@ All notable changes to constantproxy are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] - 2026-10-01
+
+### Added
+- Port conflict detection before launching ssh ("Port 10080 is already in use."); a port still held during a reconnect is retried with backoff instead of failing permanently.
+- SSH startup verification: the tunnel is only `Connected` once the SOCKS listener accepts connections, with a configurable startup timeout.
+- SOCKS5 health checks through the proxy (configurable target, interval, timeout and failure threshold), latency measurement and the `Degraded` state with recovery.
+- Optional reconnect when health checks keep failing.
+- Failure classification (local configuration, authentication, host verification, network, remote connection, forwarding, unknown) combining stage, exit code and stderr; authentication, host-key and bind failures stop the retry loop.
+- "Reconnect now" restarts ssh without increasing the backoff counter and skips a pending retry delay.
+- Latency display and an expandable Details section for failures in the main window.
+
 ## [0.1.0] - 2026-10-01
 
 ### Added
