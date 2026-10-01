@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>ConstantProxy.Infrastructure</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ConstantProxy.Core\ConstantProxy.Core.csproj" />
+    <InternalsVisibleTo Include="ConstantProxy.Tests" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,18 @@
+<Project>
+  <PropertyGroup>
+    <!-- Single source of truth for the application version (SemVer). Bumped per release. -->
+    <Version>0.1.0</Version>
+    <Authors>constantproxy contributors</Authors>
+    <Product>constantproxy</Product>
+    <Description>A lightweight Windows supervisor and analytics interface for SSH SOCKS proxies.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <!-- Set to the public GitHub repository URL; surfaced in About and diagnostics. -->
+    <RepositoryUrl>https://github.com/OWNER/constantproxy</RepositoryUrl>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+</Project>
