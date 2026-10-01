@@ -18,6 +18,7 @@ public sealed class ConnectionManager : IAsyncDisposable
     private readonly Func<double> random;
     private readonly IPortProbe? portProbe;
     private readonly ISocksProbe? socksProbe;
+    private readonly ITrafficMonitor traffic;
     private readonly ConnectionStateMachine machine;
     private readonly SemaphoreSlim commandGate = new(1, 1);
     private readonly object sync = new();
@@ -39,8 +40,10 @@ public sealed class ConnectionManager : IAsyncDisposable
         IAppLog? log = null,
         Func<double>? random = null,
         IPortProbe? portProbe = null,
-        ISocksProbe? socksProbe = null)
+        ISocksProbe? socksProbe = null,
+        ITrafficMonitor? trafficMonitor = null)
     {
+        traffic = trafficMonitor ?? new NullTrafficMonitor();
         this.portProbe = portProbe;
         this.socksProbe = socksProbe;
         this.launcher = launcher;
@@ -59,6 +62,8 @@ public sealed class ConnectionManager : IAsyncDisposable
     public event Action<StateChange>? StateChanged;
 
     public event Action<ConnectionEvent>? EventRaised;
+
+    public ITrafficMonitor TrafficMonitor => traffic;
 
     /// <summary>Raised after every health probe (success or failure).</summary>
     public event Action<HealthCheckResult>? HealthChecked;
@@ -135,6 +140,7 @@ public sealed class ConnectionManager : IAsyncDisposable
             }
 
             Volatile.Write(ref lastFailure, null);
+            traffic.ResetSession();
             machine.Transition(ConnectionState.Starting);
 
             var validation = ProfileValidator.Validate(snapshot);
@@ -329,7 +335,8 @@ public sealed class ConnectionManager : IAsyncDisposable
     private async Task<AttemptResult> RunAttemptAsync(Run r, ReconnectPolicy policy, int attempt, CancellationToken ct)
     {
         var profile = r.Profile;
-        var spec = new SshLaunchSpec(profile.SshExecutable, SshArgumentBuilder.Build(profile));
+        var backend = profile.TrafficMode == TrafficMode.Bridge ? traffic.PrepareBackend(profile) : null;
+        var spec = new SshLaunchSpec(profile.SshExecutable, SshArgumentBuilder.Build(profile, backend));
 
         var portFailure = CheckLocalPort(profile, attempt);
         if (portFailure is not null)
@@ -367,7 +374,7 @@ public sealed class ConnectionManager : IAsyncDisposable
         {
             machine.TryTransition(ConnectionState.Connecting);
 
-            var startup = await WaitForStartupAsync(r, profile, process, ct).ConfigureAwait(false);
+            var startup = await WaitForStartupAsync(r, profile, process, backend, ct).ConfigureAwait(false);
             if (startup == StartupWaitResult.ManualReconnect)
             {
                 return AttemptResult.Retry(failure: null, manual: true);
@@ -375,18 +382,30 @@ public sealed class ConnectionManager : IAsyncDisposable
 
             if (startup == StartupWaitResult.Ready)
             {
-                return await MonitorAsync(r, policy, process, info, attempt, tail, ct).ConfigureAwait(false);
+                try
+                {
+                    traffic.Start(profile, backend);
+                }
+                catch (TrafficMonitorException ex)
+                {
+                    log.Error(Source, "Traffic monitor could not start: " + ex.Message, ex);
+                    Raise(ConnectionEventType.StartupFailed, "traffic.start");
+                    return AttemptResult.Retry(new FailureInfo(FailureCategory.Forwarding, "traffic.start", "The local SOCKS port could not be opened.", Retryable: true, Details: ex.Message), manual: false);
+                }
+
+                return await MonitorAsync(r, policy, process, info, attempt, tail, backend, ct).ConfigureAwait(false);
             }
 
             // Process exited or startup timed out before the tunnel became usable.
             await RecordExitAsync(process, info, wait: startup == StartupWaitResult.Exited).ConfigureAwait(false);
-            var failure = FailureClassifier.Classify(new FailureContext(FailureStage.Startup, info.ExitCode, tail.AsText(), ListenerWasReady: false, profile.Port));
+            var failure = AdjustForBackend(FailureClassifier.Classify(new FailureContext(FailureStage.Startup, info.ExitCode, tail.AsText(), ListenerWasReady: false, profile.Port)), backend);
             Raise(ConnectionEventType.StartupFailed, failure.Code);
             return failure.Retryable ? AttemptResult.Retry(failure, manual: false) : AttemptResult.Failed(failure);
         }
         finally
         {
             process.OutputReceived -= OnOutput;
+            traffic.Stop();
             await StopProcessAsync(process).ConfigureAwait(false);
             if (info.ExitTimeUtc is null)
             {
@@ -402,10 +421,11 @@ public sealed class ConnectionManager : IAsyncDisposable
         }
     }
 
-    private async Task<StartupWaitResult> WaitForStartupAsync(Run r, Profile profile, ISshProcess process, CancellationToken ct)
+    private async Task<StartupWaitResult> WaitForStartupAsync(Run r, Profile profile, ISshProcess process, SshListenOverride? backend, CancellationToken ct)
     {
         using var verifyCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        var verifyTask = verifier.WaitUntilReadyAsync(new StartupContext(profile, process, StartupTimeout(profile)), verifyCts.Token);
+        var context = new StartupContext(profile, process, StartupTimeout(profile), backend?.Port, backend?.Address);
+        var verifyTask = verifier.WaitUntilReadyAsync(context, verifyCts.Token);
         var first = await Task.WhenAny(verifyTask, r.Signal).ConfigureAwait(false);
         if (first == r.Signal)
         {
@@ -424,7 +444,7 @@ public sealed class ConnectionManager : IAsyncDisposable
         };
     }
 
-    private async Task<AttemptResult> MonitorAsync(Run r, ReconnectPolicy policy, ISshProcess process, ProcessInfo info, int attempt, OutputTail tail, CancellationToken ct)
+    private async Task<AttemptResult> MonitorAsync(Run r, ReconnectPolicy policy, ISshProcess process, ProcessInfo info, int attempt, OutputTail tail, SshListenOverride? backend, CancellationToken ct)
     {
         var profile = r.Profile;
         var connectedAt = clock.UtcNow;
@@ -497,10 +517,17 @@ public sealed class ConnectionManager : IAsyncDisposable
             ct.ThrowIfCancellationRequested();
             await RecordExitAsync(process, info, wait: true).ConfigureAwait(false);
             policy.RegisterConnectionEnded(clock.UtcNow - connectedAt);
-            var failure = FailureClassifier.Classify(new FailureContext(FailureStage.Running, info.ExitCode, tail.AsText(), ListenerWasReady: true, profile.Port));
+            var failure = AdjustForBackend(FailureClassifier.Classify(new FailureContext(FailureStage.Running, info.ExitCode, tail.AsText(), ListenerWasReady: true, profile.Port)), backend);
             return failure.Retryable ? AttemptResult.Retry(failure, manual: false) : AttemptResult.Failed(failure);
         }
     }
+
+    /// <summary>
+    /// With a bridge, ssh listens on a freshly picked ephemeral port; a bind failure there is a rare race, not a
+    /// persistent configuration error, so it must be retried rather than ending the session.
+    /// </summary>
+    private static FailureInfo AdjustForBackend(FailureInfo failure, SshListenOverride? backend) =>
+        backend is not null && failure.Code == "forward.bind" ? failure with { Retryable = true } : failure;
 
     private HealthTransition RecordHealth(HealthCheckEvaluator evaluator, SocksProbeResult result)
     {

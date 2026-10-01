@@ -8,7 +8,8 @@ public enum StartupOutcome
 }
 
 /// <param name="ListenPort">The local port ssh was told to listen on, when it differs from <see cref="Profile.Port"/>.</param>
-public sealed record StartupContext(Profile Profile, ISshProcess Process, TimeSpan Timeout, int? ListenPort = null);
+/// <param name="ListenAddress">The local address ssh was told to listen on, when it differs from <see cref="Profile.BindAddress"/>.</param>
+public sealed record StartupContext(Profile Profile, ISshProcess Process, TimeSpan Timeout, int? ListenPort = null, string? ListenAddress = null);
 
 /// <summary>Decides when a freshly started ssh process may be declared Connected (SPEC §13).</summary>
 public interface IStartupVerifier

@@ -31,6 +31,7 @@ public class ConfigurationServiceTests
         p.Reconnect.DelaysSeconds = new List<int> { 0, 4 };
         p.Reconnect.JitterPercent = 20;
         p.StartupTimeoutSeconds = 33;
+        p.TrafficMode = TrafficMode.Off;
         p.Monitoring.TargetHost = "probe.example";
         p.Monitoring.TargetPort = 8443;
         p.Monitoring.ReconnectOnFailure = true;
@@ -51,6 +52,7 @@ public class ConfigurationServiceTests
         Assert.Equal(new[] { 0, 4 }, q.Reconnect.DelaysSeconds);
         Assert.Equal(20, q.Reconnect.JitterPercent);
         Assert.Equal(33, q.StartupTimeoutSeconds);
+        Assert.Equal(TrafficMode.Off, q.TrafficMode);
         Assert.Equal("probe.example", q.Monitoring.TargetHost);
         Assert.Equal(8443, q.Monitoring.TargetPort);
         Assert.True(q.Monitoring.ReconnectOnFailure);
@@ -123,6 +125,7 @@ public class ConfigurationServiceTests
         Assert.Equal("box", p.Host);
         Assert.Equal(10080, p.Port);
         Assert.Equal(30, p.Reconnect.HealthyResetSeconds);
+        Assert.Equal(TrafficMode.Bridge, p.TrafficMode);
         Assert.NotEqual(Guid.Empty, p.Id);
     }
 

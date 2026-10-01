@@ -22,7 +22,7 @@ public sealed class ListenerStartupVerifier : IStartupVerifier
 
     public async Task<StartupOutcome> WaitUntilReadyAsync(StartupContext context, CancellationToken cancellationToken)
     {
-        var address = ConnectAddress(context.Profile.BindAddress);
+        var address = ConnectAddress(context.ListenAddress ?? context.Profile.BindAddress);
         var port = ConnectPort(context);
         var deadline = clock.UtcNow + context.Timeout;
 

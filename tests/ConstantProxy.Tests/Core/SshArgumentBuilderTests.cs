@@ -62,10 +62,15 @@ public class SshArgumentBuilderTests
     }
 
     [Fact]
-    public void ListenPortOverrideOnlyChangesTheDynamicForwardEndpoint()
+    public void ListenOverrideOnlyChangesTheDynamicForwardEndpoint()
     {
-        var args = SshArgumentBuilder.Build(Example(), listenPortOverride: 45678);
+        var p = Example();
+        p.BindAddress = "0.0.0.0";
+        var plain = SshArgumentBuilder.Build(p);
+        var args = SshArgumentBuilder.Build(p, new SshListenOverride("127.0.0.1", 45678));
         Assert.Equal("127.0.0.1:45678", args[args.ToList().IndexOf("-D") + 1]);
+        Assert.Equal(plain.Count, args.Count);
+        Assert.Equal(plain.Where((a, i) => i != plain.ToList().IndexOf("-D") + 1), args.Where((a, i) => i != args.ToList().IndexOf("-D") + 1));
     }
 
     [Theory]

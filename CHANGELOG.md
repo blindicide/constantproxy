@@ -4,6 +4,18 @@ All notable changes to constantproxy are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] - 2026-10-01
+
+### Added
+- `ITrafficMonitor` abstraction for replaceable traffic backends; unmeasurable traffic is shown as "Unavailable" rather than invented.
+- Byte-counting bridge backend: constantproxy relays the SOCKS port to ssh's internal loopback listener and counts exactly the proxied bytes (no system-wide interface counters, no elevated privileges). Enabled by default, switchable per profile.
+- Traffic statistics: current upload/download rates, session totals, peaks and averages, sampled once per second with a bounded in-memory history.
+- Consistent binary unit formatting (1 KB = 1024 B) for rates (B/s to GB/s) and totals (B to TB).
+- Lightweight in-app traffic graph (1 minute, 5 minutes, 1 hour ranges) with a text legend so series do not rely on colour alone.
+
+### Changed
+- ssh's `-D` listener moves to an internal ephemeral loopback port while the bridge is active; the configured port stays the user-facing SOCKS endpoint.
+
 ## [0.2.0] - 2026-10-01
 
 ### Added

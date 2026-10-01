@@ -6,7 +6,9 @@ using ConstantProxy.Core.Connection;
 using ConstantProxy.Core.Logging;
 using ConstantProxy.Infrastructure.Config;
 using ConstantProxy.Infrastructure.Logging;
+using ConstantProxy.Core.Traffic;
 using ConstantProxy.Infrastructure.Network;
+using ConstantProxy.Infrastructure.Traffic;
 using ConstantProxy.Infrastructure.Ssh;
 
 namespace ConstantProxy.App;
@@ -46,15 +48,18 @@ public partial class App : Application
 
         log.MinimumSeverity = load.Config.LogVerbosity == Core.Models.LogVerbosity.Verbose ? LogSeverity.Debug : LogSeverity.Information;
 
+        var bridge = new BridgeTrafficMonitor(log);
         var manager = new ConnectionManager(
             new SshProcessLauncher(),
             new ListenerStartupVerifier(SystemClock.Instance),
             SystemClock.Instance,
             log,
             portProbe: new TcpPortProbe(),
-            socksProbe: new Socks5Probe());
+            socksProbe: new Socks5Probe(),
+            trafficMonitor: bridge);
+        var sampling = new TrafficSamplingService(bridge);
 
-        var viewModel = new MainViewModel(manager, configService, load.Config, log, Dispatcher);
+        var viewModel = new MainViewModel(manager, sampling, configService, load.Config, log, Dispatcher);
         var window = new MainWindow { DataContext = viewModel };
         MainWindow = window;
         window.Show();
