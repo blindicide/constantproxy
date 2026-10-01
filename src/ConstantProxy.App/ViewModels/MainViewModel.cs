@@ -4,6 +4,7 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using ConstantProxy.Core.Analytics;
 using ConstantProxy.Core.Connection;
+using ConstantProxy.Core.Desktop;
 using ConstantProxy.Core.Logging;
 using ConstantProxy.Core.Models;
 using ConstantProxy.Core.Presentation;
@@ -24,6 +25,7 @@ public sealed class MainViewModel : ObservableObject
     private readonly ConnectionManager manager;
     private readonly TrafficSamplingService traffic;
     private readonly AnalyticsRecorder? recorder;
+    private readonly StartupManager? startup;
     private readonly ConfigurationService configuration;
     private readonly AppConfig config;
     private readonly AppLog log;
@@ -53,6 +55,14 @@ public sealed class MainViewModel : ObservableObject
     private string healthHost;
     private string healthPort;
     private bool measureTraffic;
+    private bool startMinimized;
+    private bool closeToTray;
+    private bool minimizeToTray;
+    private bool startWithWindows;
+    private bool connectOnLaunch;
+    private bool notifyOnFailure;
+    private bool notifyOnRecovery;
+    private string minimumOutageSeconds;
     private int graphWindowSeconds = 60;
     private IReadOnlyList<TrafficPoint> graphPoints = Array.Empty<TrafficPoint>();
     private string downloadRateText = Unavailable;
@@ -65,11 +75,12 @@ public sealed class MainViewModel : ObservableObject
     // Phase 6 moves this literal into the localization resources.
     private const string Unavailable = "Unavailable";
 
-    public MainViewModel(ConnectionManager manager, TrafficSamplingService traffic, AnalyticsRecorder? recorder, StatisticsViewModel statistics, ConfigurationService configuration, AppConfig config, AppLog log, Dispatcher dispatcher)
+    public MainViewModel(ConnectionManager manager, TrafficSamplingService traffic, AnalyticsRecorder? recorder, StatisticsViewModel statistics, StartupManager? startup, ConfigurationService configuration, AppConfig config, AppLog log, Dispatcher dispatcher)
     {
         this.manager = manager;
         this.traffic = traffic;
         this.recorder = recorder;
+        this.startup = startup;
         Statistics = statistics;
         this.configuration = configuration;
         this.config = config;
@@ -90,6 +101,14 @@ public sealed class MainViewModel : ObservableObject
         healthHost = p.Monitoring.TargetHost;
         healthPort = p.Monitoring.TargetPort.ToString(CultureInfo.InvariantCulture);
         measureTraffic = p.TrafficMode == TrafficMode.Bridge;
+        startMinimized = config.Interface.StartMinimized;
+        closeToTray = config.Interface.CloseToTray;
+        minimizeToTray = config.Interface.MinimizeToTray;
+        startWithWindows = config.Interface.StartWithWindows;
+        connectOnLaunch = config.Interface.ConnectOnLaunch;
+        notifyOnFailure = config.Notifications.NotifyOnFailure;
+        notifyOnRecovery = config.Notifications.NotifyOnRecovery;
+        minimumOutageSeconds = config.Notifications.MinimumOutageSeconds.ToString(CultureInfo.InvariantCulture);
 
         ConnectCommand = new RelayCommand(ConnectAsync, () => State is ConnectionState.Disconnected or ConnectionState.Failed);
         DisconnectCommand = new RelayCommand(manager.DisconnectAsync, () => State != ConnectionState.Disconnected);
@@ -219,6 +238,42 @@ public sealed class MainViewModel : ObservableObject
 
     public bool MeasureTraffic { get => measureTraffic; set => SetProperty(ref measureTraffic, value); }
 
+    public bool StartMinimized { get => startMinimized; set => SetProperty(ref startMinimized, value); }
+
+    public bool CloseToTray { get => closeToTray; set => SetProperty(ref closeToTray, value); }
+
+    public bool MinimizeToTray { get => minimizeToTray; set => SetProperty(ref minimizeToTray, value); }
+
+    public bool StartWithWindows { get => startWithWindows; set => SetProperty(ref startWithWindows, value); }
+
+    public bool ConnectOnLaunch { get => connectOnLaunch; set => SetProperty(ref connectOnLaunch, value); }
+
+    public bool NotifyOnFailure { get => notifyOnFailure; set => SetProperty(ref notifyOnFailure, value); }
+
+    public bool NotifyOnRecovery { get => notifyOnRecovery; set => SetProperty(ref notifyOnRecovery, value); }
+
+    public string MinimumOutageSeconds { get => minimumOutageSeconds; set => SetProperty(ref minimumOutageSeconds, value); }
+
+    public AppConfig Config => config;
+
+    public ConnectionState CurrentState => State;
+
+    /// <summary>Raised on the UI thread whenever the connection state changes (used by the tray).</summary>
+    public event Action<ConnectionState>? StateChangedForTray;
+
+    public RelayCommand SaveCommand => saveCommand ??= new RelayCommand(() => { ApplyAndSave(); return Task.CompletedTask; });
+
+    private RelayCommand? saveCommand;
+
+    public Task ConnectFromTrayAsync() => ConnectAsync();
+
+    public Task DisconnectFromTrayAsync() => manager.DisconnectAsync();
+
+    public Task ReconnectFromTrayAsync() => manager.ReconnectNowAsync();
+
+    /// <summary>Connects at startup when configured and a target exists.</summary>
+    public Task ConnectOnLaunchAsync() => string.IsNullOrWhiteSpace(Host) ? Task.CompletedTask : ConnectAsync();
+
     public string LatencyText
     {
         get => latencyText;
@@ -266,21 +321,35 @@ public sealed class MainViewModel : ObservableObject
 
     public string HealthPort { get => healthPort; set => SetProperty(ref healthPort, value); }
 
-    /// <summary>Called when the window is closing: stop the tunnel (killing only our own ssh) before exiting.</summary>
-    public async Task ShutdownAsync()
+    /// <summary>First half of shutdown: stops the UI-thread timers. Must run on the UI thread.</summary>
+    public void StopUiActivity()
     {
         closing = true;
         timer.Stop();
         Statistics.Stop();
+    }
+
+    /// <summary>
+    /// Second half of shutdown: stops the tunnel (terminating only our own ssh) and flushes analytics. Touches no UI
+    /// objects, so it is safe to run on a worker thread when Windows is ending the session.
+    /// </summary>
+    public async Task ShutdownCoreAsync()
+    {
         log.Info("app", "Application shutting down");
         recorder?.MarkShuttingDown();
-        await manager.DisposeAsync();
-        await traffic.StopAsync();
+        await manager.DisposeAsync().ConfigureAwait(false);
+        await traffic.StopAsync().ConfigureAwait(false);
         if (recorder is not null)
         {
             recorder.RecordApplicationEvent(ConnectionEventType.ApplicationExit);
-            await recorder.DisposeAsync();
+            await recorder.DisposeAsync().ConfigureAwait(false);
         }
+    }
+
+    public async Task ShutdownAsync()
+    {
+        StopUiActivity();
+        await ShutdownCoreAsync();
     }
 
     private async Task ConnectAsync()
@@ -341,6 +410,19 @@ public sealed class MainViewModel : ObservableObject
         var result = ProfileValidator.Validate(candidate);
         errors.AddRange(result.Errors.Select(i => i.Message));
         var builder = new StringBuilder();
+
+        if (!int.TryParse(MinimumOutageSeconds, NumberStyles.Integer, CultureInfo.InvariantCulture, out var outageSeconds))
+        {
+            errors.Add("Minimum outage duration must be a number of seconds.");
+            outageSeconds = config.Notifications.MinimumOutageSeconds;
+        }
+        else
+        {
+            var notificationCheck = ProfileValidator.ValidateNotifications(new NotificationConfig { MinimumOutageSeconds = outageSeconds });
+            errors.AddRange(notificationCheck.Errors.Select(i => i.Message));
+        }
+
+        builder.Clear();
         foreach (var line in errors.Distinct())
         {
             builder.AppendLine(line);
@@ -357,6 +439,16 @@ public sealed class MainViewModel : ObservableObject
             return false;
         }
 
+        config.Interface.StartMinimized = StartMinimized;
+        config.Interface.CloseToTray = CloseToTray;
+        config.Interface.MinimizeToTray = MinimizeToTray;
+        config.Interface.StartWithWindows = StartWithWindows;
+        config.Interface.ConnectOnLaunch = ConnectOnLaunch;
+        config.Notifications.NotifyOnFailure = NotifyOnFailure;
+        config.Notifications.NotifyOnRecovery = NotifyOnRecovery;
+        config.Notifications.MinimumOutageSeconds = outageSeconds;
+        ApplyStartupRegistration();
+
         var index = config.Profiles.FindIndex(x => x.Id == p.Id);
         config.Profiles[index] = candidate;
         try
@@ -372,6 +464,24 @@ public sealed class MainViewModel : ObservableObject
         return true;
     }
 
+    private void ApplyStartupRegistration()
+    {
+        if (startup is null)
+        {
+            return;
+        }
+
+        try
+        {
+            startup.Apply(config.Interface.StartWithWindows);
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException or InvalidOperationException or IOException)
+        {
+            log.Warn("app", "Could not update the Windows startup entry.", ex);
+            ValidationText += (ValidationText.Length > 0 ? Environment.NewLine : string.Empty) + "The Windows startup entry could not be updated: " + ex.Message;
+        }
+    }
+
     private void OnStateChanged(StateChange change)
     {
         if (closing)
@@ -380,6 +490,7 @@ public sealed class MainViewModel : ObservableObject
         }
 
         State = change.New;
+        StateChangedForTray?.Invoke(change.New);
         StatusDetail = change.New switch
         {
             ConnectionState.Failed => change.Failure?.Message ?? string.Empty,

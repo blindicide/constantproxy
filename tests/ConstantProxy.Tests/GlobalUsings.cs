@@ -13,3 +13,5 @@ global using ConstantProxy.Core.Traffic;
 global using ConstantProxy.Infrastructure.Traffic;
 global using ConstantProxy.Core.Analytics;
 global using ConstantProxy.Infrastructure.Analytics;
+global using ConstantProxy.Core.Desktop;
+global using ConstantProxy.Infrastructure.Desktop;

@@ -7,6 +7,34 @@ public enum LogVerbosity
 }
 
 /// <summary>Root of the user configuration file (SPEC §22). Kept separate from the analytics database.</summary>
+/// <summary>Window and startup behaviour (SPEC §28 Interface, §31, §32).</summary>
+public sealed class InterfaceConfig
+{
+    public bool StartMinimized { get; set; }
+
+    /// <summary>Closing the main window hides it to the notification area instead of exiting.</summary>
+    public bool CloseToTray { get; set; } = true;
+
+    /// <summary>Minimizing the main window hides it to the notification area.</summary>
+    public bool MinimizeToTray { get; set; } = true;
+
+    public bool StartWithWindows { get; set; }
+
+    /// <summary>Connects the active profile whenever the application starts. Independent of <see cref="StartWithWindows"/>.</summary>
+    public bool ConnectOnLaunch { get; set; }
+}
+
+/// <summary>Notification preferences (SPEC §33).</summary>
+public sealed class NotificationConfig
+{
+    public bool NotifyOnFailure { get; set; } = true;
+
+    public bool NotifyOnRecovery { get; set; } = true;
+
+    /// <summary>An outage must last at least this long before the user is told; keeps brief blips quiet.</summary>
+    public int MinimumOutageSeconds { get; set; } = 10;
+}
+
 public sealed class AnalyticsConfig
 {
     public bool StoreHistory { get; set; } = true;
@@ -33,6 +61,10 @@ public sealed class AppConfig
     /// <summary>Whether to keep history, and for how long (SPEC §28, §80).</summary>
     public AnalyticsConfig Analytics { get; set; } = new();
 
+    public InterfaceConfig Interface { get; set; } = new();
+
+    public NotificationConfig Notifications { get; set; } = new();
+
     /// <summary>The active profile, or the first one if the stored id no longer exists.</summary>
     public Profile ActiveProfile => Profiles.FirstOrDefault(p => p.Id == ActiveProfileId) ?? Profiles[0];
 
@@ -42,6 +74,8 @@ public sealed class AppConfig
     /// </summary>
     public AppConfig Normalize()
     {
+        Interface ??= new InterfaceConfig();
+        Notifications ??= new NotificationConfig();
         Analytics ??= new AnalyticsConfig();
         Analytics.DatabasePath ??= string.Empty;
         Profiles ??= new List<Profile>();

@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
+using ConstantProxy.Infrastructure.Desktop;
 
 namespace ConstantProxy.Infrastructure.Ssh;
 
@@ -65,6 +66,9 @@ public sealed class SshProcessLauncher : ISshProcessLauncher
         {
             // already closed by an immediate exit
         }
+
+        // If constantproxy dies, Windows ends this ssh with it; nothing else is affected.
+        ChildProcessJob.TryAssign(process);
 
         var wrapped = new LocalSshProcess(process);
         wrapped.BeginObserving();
