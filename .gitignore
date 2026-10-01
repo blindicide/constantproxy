@@ -1,0 +1,24 @@
+# Environment & runtime
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+node_modules/
+dist/
+
+# Harness orchestration & accounting files
+INSTRUCTION*.md
+SUPERVISOR-BRIEF*.md
+RUN-ACCOUNTING.md
+CLAUDE.md
+AGENTS.md
+.hermes/
+
+# Logs & keys
+*.log
+requests.jsonl
+*.key
+*.token
