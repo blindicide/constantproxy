@@ -144,9 +144,16 @@
                 </ScrollViewer>
             </TabItem>
             <TabItem Header="{loc:Loc tab.log}">
-                <TextBox Text="{Binding LogText, Mode=OneWay}" IsReadOnly="True" FontFamily="Consolas" FontSize="11" Margin="4"
-                         VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" TextWrapping="NoWrap"
-                         AutomationProperties.Name="{loc:Loc a11y.log}" />
+                <DockPanel>
+                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="4,6,4,2">
+                        <Label Content="{loc:Loc label.logFilter}" Target="{Binding ElementName=LogFilterBox}" Padding="0,0,6,0" VerticalAlignment="Center" />
+                        <ComboBox x:Name="LogFilterBox" ItemsSource="{Binding LogFilterOptions}" SelectedValuePath="Value" DisplayMemberPath="Label"
+                                  SelectedValue="{Binding LogFilter}" MinWidth="150" />
+                    </StackPanel>
+                    <TextBox Text="{Binding LogText, Mode=OneWay}" IsReadOnly="True" FontFamily="Consolas" FontSize="11" Margin="4"
+                             VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" TextWrapping="NoWrap"
+                             AutomationProperties.Name="{loc:Loc a11y.log}" />
+                </DockPanel>
             </TabItem>
         </TabControl>
     </DockPanel>

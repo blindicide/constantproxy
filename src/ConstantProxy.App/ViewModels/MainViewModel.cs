@@ -43,6 +43,8 @@ public sealed class MainViewModel : ObservableObject
     private string sessionDuration = "00:00:00";
     private string notice = string.Empty;
     private string logText = string.Empty;
+    private string logFilter = "all";
+    private IReadOnlyList<LocalizedOption<string>> logFilterOptions = Array.Empty<LocalizedOption<string>>();
     private int reconnectCount;
     private string latencyText = string.Empty;
     private bool closing;
@@ -105,10 +107,8 @@ public sealed class MainViewModel : ObservableObject
         traffic.Sampled += _ => dispatcher.BeginInvoke(RefreshTraffic);
         log.EntryAdded += entry => dispatcher.BeginInvoke(() => AppendLog(entry));
         loc.LanguageChanged += () => dispatcher.BeginInvoke(OnLanguageChanged);
-        foreach (var entry in log.Snapshot())
-        {
-            AppendLogLine(entry);
-        }
+        logFilterOptions = BuildLogFilterOptions();
+        RebuildLog();
 
         timer = new DispatcherTimer(DispatcherPriority.Background, dispatcher) { Interval = TimeSpan.FromSeconds(1) };
         timer.Tick += (_, _) => RefreshSession();
@@ -237,6 +237,21 @@ public sealed class MainViewModel : ObservableObject
     public string Notice { get => notice; private set => SetProperty(ref notice, value); }
 
     public string LogText { get => logText; private set => SetProperty(ref logText, value); }
+
+    public IReadOnlyList<LocalizedOption<string>> LogFilterOptions { get => logFilterOptions; private set => SetProperty(ref logFilterOptions, value); }
+
+    /// <summary><c>all</c>, <c>ssh</c> (Logs → SSH, SPEC §25) or <c>app</c>.</summary>
+    public string LogFilter
+    {
+        get => logFilter;
+        set
+        {
+            if (!string.IsNullOrEmpty(value) && SetProperty(ref logFilter, value))
+            {
+                RebuildLog();
+            }
+        }
+    }
 
     public int ReconnectCount { get => reconnectCount; private set => SetProperty(ref reconnectCount, value); }
 
@@ -580,6 +595,7 @@ public sealed class MainViewModel : ObservableObject
     /// <summary>Re-renders everything that was composed in the previous language (SPEC §30: no restart needed).</summary>
     private void OnLanguageChanged()
     {
+        LogFilterOptions = BuildLogFilterOptions();
         RefreshTraffic();
         RefreshSession();
         if (State == ConnectionState.Disconnected)
@@ -604,7 +620,36 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
-    private void AppendLog(LogEntry entry) => AppendLogLine(entry);
+    private IReadOnlyList<LocalizedOption<string>> BuildLogFilterOptions() => new[]
+    {
+        new LocalizedOption<string>("all", loc.Get("log.filter.all")),
+        new LocalizedOption<string>("ssh", loc.Get("log.filter.ssh")),
+        new LocalizedOption<string>("app", loc.Get("log.filter.app")),
+    };
+
+    private bool MatchesLogFilter(LogEntry entry) => logFilter switch
+    {
+        "ssh" => entry.Source == "ssh",
+        "app" => entry.Source != "ssh",
+        _ => true,
+    };
+
+    private void AppendLog(LogEntry entry)
+    {
+        if (MatchesLogFilter(entry))
+        {
+            AppendLogLine(entry);
+        }
+    }
+
+    private void RebuildLog()
+    {
+        LogText = string.Empty;
+        foreach (var entry in log.Snapshot().Where(MatchesLogFilter))
+        {
+            AppendLogLine(entry);
+        }
+    }
 
     private void AppendLogLine(LogEntry entry)
     {

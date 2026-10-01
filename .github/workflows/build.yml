@@ -1,0 +1,82 @@
+name: build
+
+# Continuous build (SPEC §54): restore, compile, unit tests and a packaging dry run on every push and pull request.
+# No SSH servers, credentials or secrets are used anywhere; the tests only use fakes and local loopback sockets.
+on:
+  push:
+    tags-ignore:
+      - 'v*'   # tags are built by release.yml
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  DOTNET_NOLOGO: '1'
+
+jobs:
+  windows:
+    name: Windows build, test and package check
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore ConstantProxy.sln
+
+      - name: Build (Release)
+        run: dotnet build ConstantProxy.sln -c Release --no-restore -p:ContinuousIntegrationBuild=true
+
+      - name: Unit tests
+        run: dotnet test tests/ConstantProxy.Tests -c Release --no-build --logger "trx;LogFileName=test-results.trx" --results-directory TestResults
+
+      - name: Publish dry run (self-contained single file)
+        run: >
+          dotnet publish src/ConstantProxy.App -c Release -r win-x64 --self-contained true
+          -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtraction=true
+          -p:EnableCompressionInSingleFile=true -p:DebugType=none -p:ContinuousIntegrationBuild=true
+          -o publish
+
+      - name: Smoke test the published executable
+        shell: pwsh
+        run: |
+          # The version printed by the executable must match the version in the build metadata.
+          $expected = ([xml](Get-Content Directory.Build.props)).Project.PropertyGroup.Version
+          $lone = Join-Path $env:RUNNER_TEMP 'lone'
+          New-Item -ItemType Directory -Force -Path $lone | Out-Null
+          Copy-Item publish\constantproxy.exe $lone
+          $out = Join-Path $env:RUNNER_TEMP 'version.txt'
+          Start-Process -FilePath (Join-Path $lone 'constantproxy.exe') -ArgumentList '--version' -RedirectStandardOutput $out -Wait -NoNewWindow
+          $text = (Get-Content $out -Raw).Trim()
+          Write-Host "constantproxy printed: $text"
+          if ($text -ne "constantproxy $expected") { throw "Unexpected version output '$text' (expected 'constantproxy $expected')" }
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-windows
+          path: TestResults
+
+  linux-tests:
+    name: Unit tests on Linux
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      # The test project only references the platform-neutral Core and Infrastructure libraries.
+      - name: Unit tests
+        run: dotnet test tests/ConstantProxy.Tests -c Release

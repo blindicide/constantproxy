@@ -11,10 +11,12 @@ namespace ConstantProxy.Infrastructure.Ssh;
 public sealed class SshProcessLauncher : ISshProcessLauncher
 {
     private readonly SshLocator locator;
+    private readonly ChildProcessRegistry? registry;
 
-    public SshProcessLauncher(SshLocator? locator = null)
+    public SshProcessLauncher(SshLocator? locator = null, ChildProcessRegistry? registry = null)
     {
         this.locator = locator ?? new SshLocator();
+        this.registry = registry;
     }
 
     public ISshProcess Start(SshLaunchSpec spec)
@@ -71,8 +73,29 @@ public sealed class SshProcessLauncher : ISshProcessLauncher
         ChildProcessJob.TryAssign(process);
 
         var wrapped = new LocalSshProcess(process);
+        RegisterForCleanup(process, wrapped);
         wrapped.BeginObserving();
         return wrapped;
+    }
+
+    /// <summary>Records the process so a later run can end it if constantproxy dies without cleaning up (SPEC §82).</summary>
+    private void RegisterForCleanup(Process process, LocalSshProcess wrapped)
+    {
+        if (registry is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var entry = new RegisteredProcess(process.Id, new DateTimeOffset(process.StartTime.ToUniversalTime(), TimeSpan.Zero), process.ProcessName);
+            registry.Register(entry);
+            _ = wrapped.Exited.ContinueWith(_ => registry.Unregister(entry.Pid), TaskScheduler.Default);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            // The process exited immediately or cannot be inspected; there is nothing to clean up later.
+        }
     }
 
     private static LaunchFailureKind MapNativeError(int code) => code switch

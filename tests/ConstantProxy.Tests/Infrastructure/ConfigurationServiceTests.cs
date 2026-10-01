@@ -73,6 +73,47 @@ public class ConfigurationServiceTests
     }
 
     [Fact]
+    public void TheFileContainsOnlyStoredSettingsNotDerivedOnes()
+    {
+        using var dir = new TempDir();
+        var path = dir.File("config.json");
+        var config = AppConfig.CreateDefault();
+        config.ActiveProfile.Host = "my-alias";
+        new ConfigurationService(path).Save(config);
+
+        var json = File.ReadAllText(path);
+        Assert.DoesNotContain("activeProfile\"", json); // activeProfileId is stored; the derived object must not be
+        Assert.Contains("activeProfileId", json);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(json, "my-alias")); // the target appears once
+    }
+
+    [Fact]
+    public void Ipv4SettingUsesAReadableName()
+    {
+        using var dir = new TempDir();
+        var path = dir.File("config.json");
+        var config = AppConfig.CreateDefault();
+        config.ActiveProfile.IPv4Only = false;
+        new ConfigurationService(path).Save(config);
+
+        var json = File.ReadAllText(path);
+        Assert.Contains("\"ipv4Only\": false", json);
+        Assert.False(new ConfigurationService(path).Load().Config.ActiveProfile.IPv4Only);
+    }
+
+    [Fact]
+    public void PropertyNamesAreMatchedIgnoringCase()
+    {
+        using var dir = new TempDir();
+        var path = dir.File("config.json");
+        File.WriteAllText(path, """{ "SchemaVersion": 1, "Profiles": [ { "Host": "x", "PORT": 2222, "IPV4ONLY": false } ] }""");
+
+        var p = new ConfigurationService(path).Load().Config.ActiveProfile;
+
+        Assert.Equal(("x", 2222, false), (p.Host, p.Port, p.IPv4Only));
+    }
+
+    [Fact]
     public void SaveCreatesMissingDirectories()
     {
         using var dir = new TempDir();
@@ -120,7 +161,7 @@ public class ConfigurationServiceTests
 
         var result = new ConfigurationService(path).Load();
 
-        Assert.Equal(ConfigLoadStatus.Loaded, result.Status);
+        Assert.Equal(ConfigLoadStatus.Migrated, result.Status); // no schemaVersion: written before versioning existed
         var p = result.Config.ActiveProfile;
         Assert.Equal("box", p.Host);
         Assert.Equal(10080, p.Port);

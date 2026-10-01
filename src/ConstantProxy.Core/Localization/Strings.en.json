@@ -282,5 +282,12 @@
   "firstrun.sshAuto": "Automatic detection",
   "firstrun.authNote": "Authentication stays with OpenSSH: constantproxy never stores passwords or keys.",
   "firstrun.more": "More settings…",
-  "firstrun.later": "Not now"
+  "firstrun.later": "Not now",
+  "dialog.crash": "An unexpected error occurred:\n\n{0}\n\nA crash report was saved to:\n{1}\n\nconstantproxy keeps running. If the problem repeats, restart it and report the issue.",
+  "dialog.crash.noReport": "(the report could not be saved)",
+  "dialog.configNewer": "The configuration was written by a newer version of constantproxy (format {0}, this version understands {1}).\n\nA backup of the original was saved to:\n{2}\n\nSettings this version does not know about are dropped when you save.",
+  "label.logFilter": "Show",
+  "log.filter.all": "Everything",
+  "log.filter.ssh": "SSH output",
+  "log.filter.app": "Application"
 }

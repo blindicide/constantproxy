@@ -369,7 +369,9 @@ public sealed class ConnectionManager : IAsyncDisposable
         void OnOutput(SshOutputLine line)
         {
             tail.Add(line);
-            log.Debug("ssh", $"[{(line.Stream == OutputStream.StandardError ? "stderr" : "stdout")}] {line.Text}");
+            // OpenSSH reports its diagnostics on stderr, so those lines are always logged; stdout is verbose-only.
+            var isError = line.Stream == OutputStream.StandardError;
+            log.Log(isError ? LogSeverity.Information : LogSeverity.Debug, "ssh", $"[{(isError ? "stderr" : "stdout")}] {line.Text}");
         }
 
         process.OutputReceived += OnOutput;
