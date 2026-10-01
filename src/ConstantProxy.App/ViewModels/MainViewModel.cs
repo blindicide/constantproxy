@@ -5,6 +5,7 @@ using System.Windows.Threading;
 using ConstantProxy.Core.Analytics;
 using ConstantProxy.Core.Connection;
 using ConstantProxy.Core.Desktop;
+using ConstantProxy.Core.Localization;
 using ConstantProxy.Core.Logging;
 using ConstantProxy.Core.Models;
 using ConstantProxy.Core.Presentation;
@@ -29,17 +30,18 @@ public sealed class MainViewModel : ObservableObject
     private readonly ConfigurationService configuration;
     private readonly AppConfig config;
     private readonly AppLog log;
+    private readonly LocalizationService loc;
     private readonly Dispatcher dispatcher;
     private readonly DispatcherTimer timer;
 
     private ConnectionState state = ConnectionState.Disconnected;
-    private string sessionDuration = DurationFormatter.Format(TimeSpan.Zero);
-    private string statusDetail = string.Empty;
+    private string sessionDuration = "00:00:00";
+    private FailureInfo? currentFailure;
     private string validationText = string.Empty;
     private string logText = string.Empty;
     private int reconnectCount;
-    private string latencyText = "-";
-    private string failureDetails = string.Empty;
+    private string latencyText = string.Empty;
+    private string languageSetting;
     private bool closing;
 
     private string host;
@@ -65,22 +67,21 @@ public sealed class MainViewModel : ObservableObject
     private string minimumOutageSeconds;
     private int graphWindowSeconds = 60;
     private IReadOnlyList<TrafficPoint> graphPoints = Array.Empty<TrafficPoint>();
-    private string downloadRateText = Unavailable;
-    private string uploadRateText = Unavailable;
-    private string downloadTotalText = Unavailable;
-    private string uploadTotalText = Unavailable;
+    private string downloadRateText = string.Empty;
+    private string uploadRateText = string.Empty;
+    private string downloadTotalText = string.Empty;
+    private string uploadTotalText = string.Empty;
     private string peakText = string.Empty;
     private string averageText = string.Empty;
+    private IReadOnlyList<LocalizedOption<string>> languageOptions = Array.Empty<LocalizedOption<string>>();
 
-    // Phase 6 moves this literal into the localization resources.
-    private const string Unavailable = "Unavailable";
-
-    public MainViewModel(ConnectionManager manager, TrafficSamplingService traffic, AnalyticsRecorder? recorder, StatisticsViewModel statistics, StartupManager? startup, ConfigurationService configuration, AppConfig config, AppLog log, Dispatcher dispatcher)
+    public MainViewModel(ConnectionManager manager, TrafficSamplingService traffic, AnalyticsRecorder? recorder, StatisticsViewModel statistics, StartupManager? startup, LocalizationService loc, ConfigurationService configuration, AppConfig config, AppLog log, Dispatcher dispatcher)
     {
         this.manager = manager;
         this.traffic = traffic;
         this.recorder = recorder;
         this.startup = startup;
+        this.loc = loc;
         Statistics = statistics;
         this.configuration = configuration;
         this.config = config;
@@ -109,6 +110,10 @@ public sealed class MainViewModel : ObservableObject
         notifyOnFailure = config.Notifications.NotifyOnFailure;
         notifyOnRecovery = config.Notifications.NotifyOnRecovery;
         minimumOutageSeconds = config.Notifications.MinimumOutageSeconds.ToString(CultureInfo.InvariantCulture);
+        languageSetting = config.Interface.Language;
+        languageOptions = BuildLanguageOptions();
+        downloadRateText = uploadRateText = downloadTotalText = uploadTotalText = loc.Get("traffic.unavailable");
+        latencyText = loc.Get("stats.none");
 
         ConnectCommand = new RelayCommand(ConnectAsync, () => State is ConnectionState.Disconnected or ConnectionState.Failed);
         DisconnectCommand = new RelayCommand(manager.DisconnectAsync, () => State != ConnectionState.Disconnected);
@@ -118,6 +123,7 @@ public sealed class MainViewModel : ObservableObject
         manager.HealthChecked += _ => dispatcher.BeginInvoke(RefreshSession);
         traffic.Sampled += _ => dispatcher.BeginInvoke(RefreshTraffic);
         log.EntryAdded += entry => dispatcher.BeginInvoke(() => AppendLog(entry));
+        loc.LanguageChanged += () => dispatcher.BeginInvoke(OnLanguageChanged);
         foreach (var entry in log.Snapshot())
         {
             AppendLogLine(entry);
@@ -155,8 +161,7 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
-    // Phase 6 moves these literals into localization resources.
-    public string StateText => State.ToString();
+    public string StateText => LocalizedText.State(loc, State);
 
     public string StateGlyph => State switch
     {
@@ -184,11 +189,14 @@ public sealed class MainViewModel : ObservableObject
         private set => SetProperty(ref sessionDuration, value);
     }
 
-    public string StatusDetail
+    /// <summary>One line explaining the current state; recomputed from the state so a language switch updates it.</summary>
+    public string StatusDetail => State switch
     {
-        get => statusDetail;
-        private set => SetProperty(ref statusDetail, value);
-    }
+        ConnectionState.Failed => currentFailure is { } failure ? LocalizedText.Failure(loc, failure) : string.Empty,
+        ConnectionState.Reconnecting => currentFailure is { } failure ? LocalizedText.Failure(loc, failure) : loc.Get("status.reconnecting"),
+        ConnectionState.Degraded => loc.Get("status.degraded"),
+        _ => string.Empty,
+    };
 
     public string ValidationText
     {
@@ -256,6 +264,32 @@ public sealed class MainViewModel : ObservableObject
 
     public AppConfig Config => config;
 
+    public IReadOnlyList<LocalizedOption<string>> LanguageOptions { get => languageOptions; private set => SetProperty(ref languageOptions, value); }
+
+    /// <summary><c>auto</c>, <c>en</c> or <c>ru</c>. Applied and saved immediately; no restart needed (SPEC §30).</summary>
+    public string LanguageSetting
+    {
+        get => languageSetting;
+        set
+        {
+            if (string.IsNullOrEmpty(value) || !LanguageCodes.IsValidSetting(value) || !SetProperty(ref languageSetting, value))
+            {
+                return; // a combo box briefly reports null while its items are being replaced
+            }
+
+            config.Interface.Language = value;
+            loc.SetLanguage(LanguageCodes.Resolve(value, CultureInfo.CurrentUICulture));
+            try
+            {
+                configuration.Save(config);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                log.Error("config", "Could not save the language setting.", ex);
+            }
+        }
+    }
+
     public ConnectionState CurrentState => State;
 
     /// <summary>Raised on the UI thread whenever the connection state changes (used by the tray).</summary>
@@ -281,21 +315,16 @@ public sealed class MainViewModel : ObservableObject
     }
 
     /// <summary>Technical details of the last failure, shown in an expandable section (SPEC §34).</summary>
-    public string FailureDetails
-    {
-        get => failureDetails;
-        private set
-        {
-            if (SetProperty(ref failureDetails, value))
-            {
-                OnPropertyChanged(nameof(HasFailureDetails));
-            }
-        }
-    }
+    public string FailureDetails =>
+        State is ConnectionState.Failed or ConnectionState.Reconnecting && currentFailure is { } failure
+            ? LocalizedText.FailureDetails(loc, failure)
+            : string.Empty;
 
     public bool HasFailureDetails => !string.IsNullOrWhiteSpace(FailureDetails);
 
-    public string Endpoint => string.IsNullOrWhiteSpace(Host) ? "-" : SshArgumentBuilder.FormatEndpoint(BindAddress, int.TryParse(Port, out var p) ? p : 0);
+    public LocalizationService Localization => loc;
+
+    public string Endpoint => string.IsNullOrWhiteSpace(Host) ? loc.Get("stats.none") : SshArgumentBuilder.FormatEndpoint(BindAddress, int.TryParse(Port, out var p) ? p : 0);
 
     public string Host { get => host; set { if (SetProperty(ref host, value)) { OnPropertyChanged(nameof(Endpoint)); } } }
 
@@ -370,25 +399,25 @@ public sealed class MainViewModel : ObservableObject
 
         if (!int.TryParse(Port, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedPort))
         {
-            errors.Add("Port must be a number between 1 and 65535.");
+            errors.Add(loc.Get("settings.number.port"));
             parsedPort = p.Port;
         }
 
         if (!int.TryParse(ServerAliveInterval, NumberStyles.Integer, CultureInfo.InvariantCulture, out var interval))
         {
-            errors.Add("ServerAliveInterval must be a number.");
+            errors.Add(loc.Get("settings.number.alive"));
             interval = p.ServerAliveInterval;
         }
 
         if (!int.TryParse(ServerAliveCountMax, NumberStyles.Integer, CultureInfo.InvariantCulture, out var countMax))
         {
-            errors.Add("ServerAliveCountMax must be a number.");
+            errors.Add(loc.Get("settings.number.count"));
             countMax = p.ServerAliveCountMax;
         }
 
         if (!int.TryParse(HealthPort, NumberStyles.Integer, CultureInfo.InvariantCulture, out var healthPortValue))
         {
-            errors.Add("Health-check port must be a number.");
+            errors.Add(loc.Get("settings.number.healthPort"));
             healthPortValue = p.Monitoring.TargetPort;
         }
 
@@ -408,18 +437,18 @@ public sealed class MainViewModel : ObservableObject
         candidate.TrafficMode = MeasureTraffic ? TrafficMode.Bridge : TrafficMode.Off;
 
         var result = ProfileValidator.Validate(candidate);
-        errors.AddRange(result.Errors.Select(i => i.Message));
+        errors.AddRange(result.Errors.Select(i => LocalizedText.Issue(loc, i)));
         var builder = new StringBuilder();
 
         if (!int.TryParse(MinimumOutageSeconds, NumberStyles.Integer, CultureInfo.InvariantCulture, out var outageSeconds))
         {
-            errors.Add("Minimum outage duration must be a number of seconds.");
+            errors.Add(loc.Get("settings.number.outage"));
             outageSeconds = config.Notifications.MinimumOutageSeconds;
         }
         else
         {
             var notificationCheck = ProfileValidator.ValidateNotifications(new NotificationConfig { MinimumOutageSeconds = outageSeconds });
-            errors.AddRange(notificationCheck.Errors.Select(i => i.Message));
+            errors.AddRange(notificationCheck.Errors.Select(i => LocalizedText.Issue(loc, i)));
         }
 
         builder.Clear();
@@ -430,7 +459,7 @@ public sealed class MainViewModel : ObservableObject
 
         foreach (var warning in result.Warnings)
         {
-            builder.AppendLine("Warning: " + warning.Message);
+            builder.AppendLine(loc.Format("settings.warning", LocalizedText.Issue(loc, warning)));
         }
 
         ValidationText = builder.ToString().TrimEnd();
@@ -458,7 +487,7 @@ public sealed class MainViewModel : ObservableObject
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             log.Error("config", "Could not save the configuration.", ex);
-            ValidationText += (ValidationText.Length > 0 ? Environment.NewLine : string.Empty) + "The configuration could not be saved: " + ex.Message;
+            ValidationText += (ValidationText.Length > 0 ? Environment.NewLine : string.Empty) + loc.Format("dialog.saveFailed", ex.Message);
         }
 
         return true;
@@ -478,7 +507,7 @@ public sealed class MainViewModel : ObservableObject
         catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException or InvalidOperationException or IOException)
         {
             log.Warn("app", "Could not update the Windows startup entry.", ex);
-            ValidationText += (ValidationText.Length > 0 ? Environment.NewLine : string.Empty) + "The Windows startup entry could not be updated: " + ex.Message;
+            ValidationText += (ValidationText.Length > 0 ? Environment.NewLine : string.Empty) + loc.Format("dialog.startupFailed", ex.Message);
         }
     }
 
@@ -489,22 +518,25 @@ public sealed class MainViewModel : ObservableObject
             return;
         }
 
+        if (change.New is ConnectionState.Failed or ConnectionState.Reconnecting)
+        {
+            currentFailure = change.Failure ?? currentFailure;
+        }
+        else if (change.New is ConnectionState.Connected or ConnectionState.Disconnected or ConnectionState.Starting)
+        {
+            currentFailure = null;
+        }
+
         State = change.New;
         StateChangedForTray?.Invoke(change.New);
-        StatusDetail = change.New switch
-        {
-            ConnectionState.Failed => change.Failure?.Message ?? string.Empty,
-            ConnectionState.Reconnecting => change.Failure?.Message ?? "Reconnecting…",
-            ConnectionState.Degraded => "Health checks are failing; the SOCKS proxy may not be passing traffic.",
-            ConnectionState.Connected or ConnectionState.Disconnected => string.Empty,
-            _ => StatusDetail,
-        };
-        FailureDetails = change.New is ConnectionState.Failed or ConnectionState.Reconnecting ? change.Failure?.Details ?? string.Empty : string.Empty;
+        OnPropertyChanged(nameof(StatusDetail));
+        OnPropertyChanged(nameof(FailureDetails));
+        OnPropertyChanged(nameof(HasFailureDetails));
 
         if (change.New is ConnectionState.Disconnected)
         {
             timer.Stop();
-            SessionDuration = DurationFormatter.Format(TimeSpan.Zero);
+            SessionDuration = LocalizedText.Duration(loc, TimeSpan.Zero);
         }
         else if (!timer.IsEnabled)
         {
@@ -532,34 +564,55 @@ public sealed class MainViewModel : ObservableObject
     private void RefreshTraffic()
     {
         var s = traffic.Statistics;
-        var culture = CultureInfo.CurrentUICulture;
         if (!s.IsAvailable)
         {
-            DownloadRateText = UploadRateText = DownloadTotalText = UploadTotalText = Unavailable;
+            DownloadRateText = UploadRateText = DownloadTotalText = UploadTotalText = loc.Get("traffic.unavailable");
             PeakText = AverageText = string.Empty;
             GraphPoints = Array.Empty<TrafficPoint>();
             return;
         }
 
-        DownloadRateText = TrafficFormatter.FormatRate(s.CurrentDownloadRate ?? 0, culture);
-        UploadRateText = TrafficFormatter.FormatRate(s.CurrentUploadRate ?? 0, culture);
-        DownloadTotalText = TrafficFormatter.FormatBytes(s.SessionDownloadBytes ?? 0, culture);
-        UploadTotalText = TrafficFormatter.FormatBytes(s.SessionUploadBytes ?? 0, culture);
-        PeakText = $"Peak ↓ {TrafficFormatter.FormatRate(s.PeakDownloadRate, culture)}  ↑ {TrafficFormatter.FormatRate(s.PeakUploadRate, culture)}";
-        AverageText = $"Average ↓ {TrafficFormatter.FormatRate(s.AverageDownloadRate, culture)}  ↑ {TrafficFormatter.FormatRate(s.AverageUploadRate, culture)}";
+        DownloadRateText = LocalizedText.Rate(loc, s.CurrentDownloadRate ?? 0);
+        UploadRateText = LocalizedText.Rate(loc, s.CurrentUploadRate ?? 0);
+        DownloadTotalText = LocalizedText.Bytes(loc, s.SessionDownloadBytes ?? 0);
+        UploadTotalText = LocalizedText.Bytes(loc, s.SessionUploadBytes ?? 0);
+        PeakText = loc.Format("traffic.peak", LocalizedText.Rate(loc, s.PeakDownloadRate), LocalizedText.Rate(loc, s.PeakUploadRate));
+        AverageText = loc.Format("traffic.average", LocalizedText.Rate(loc, s.AverageDownloadRate), LocalizedText.Rate(loc, s.AverageUploadRate));
         GraphPoints = s.Recent(GraphWindowSeconds + 1);
+    }
+
+    private IReadOnlyList<LocalizedOption<string>> BuildLanguageOptions() => new[]
+    {
+        new LocalizedOption<string>(LanguageCodes.Auto, loc.Get("language.auto")),
+        new LocalizedOption<string>(LanguageCodes.English, loc.Get("language.en")),
+        new LocalizedOption<string>(LanguageCodes.Russian, loc.Get("language.ru")),
+    };
+
+    /// <summary>Re-renders everything that was composed in the previous language (SPEC §30: no restart needed).</summary>
+    private void OnLanguageChanged()
+    {
+        LanguageOptions = BuildLanguageOptions();
+        RefreshTraffic();
+        RefreshSession();
+        if (State == ConnectionState.Disconnected)
+        {
+            SessionDuration = LocalizedText.Duration(loc, TimeSpan.Zero);
+        }
+
+        Statistics.OnLanguageChanged();
+        OnPropertyChanged(string.Empty); // every bound text is recomposed
     }
 
     private void RefreshSession()
     {
         ReconnectCount = manager.ReconnectCount;
         LatencyText = State is ConnectionState.Connected or ConnectionState.Degraded && manager.LastHealth is { Success: true, Latency: { } latency }
-            ? $"{latency.TotalMilliseconds:0} ms"
-            : "-";
+            ? loc.Format("label.latency.value", latency.TotalMilliseconds.ToString("0", loc.Culture))
+            : loc.Get("stats.none");
         var started = manager.SessionStartedUtc;
         if (started is not null)
         {
-            SessionDuration = DurationFormatter.Format(DateTimeOffset.UtcNow - started.Value);
+            SessionDuration = LocalizedText.Duration(loc, DateTimeOffset.UtcNow - started.Value);
         }
     }
 
@@ -574,3 +627,6 @@ public sealed class MainViewModel : ObservableObject
         LogText = text.Length > 60_000 ? text[^40_000..] : text;
     }
 }
+
+/// <summary>A combo-box entry whose label is localized but whose value is stable.</summary>
+public sealed record LocalizedOption<T>(T Value, string Label);

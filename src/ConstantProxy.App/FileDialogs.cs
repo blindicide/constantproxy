@@ -9,9 +9,9 @@ public sealed class WpfExportDialog : IExportDialog
     {
         var dialog = new SaveFileDialog
         {
-            Title = "Export analytics",
+            Title = LocalizationSource.Instance.Service.Get("export.title"),
             FileName = "constantproxy-export.csv",
-            Filter = "CSV files (*.csv)|*.csv|JSON files (*.json)|*.json",
+            Filter = LocalizationSource.Instance.Service.Get("export.filter"),
             AddExtension = true,
             DefaultExt = ".csv",
         };

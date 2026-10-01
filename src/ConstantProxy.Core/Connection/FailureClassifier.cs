@@ -62,21 +62,20 @@ public static class FailureClassifier
         {
             if (rule.Pattern.IsMatch(text))
             {
-                return new FailureInfo(rule.Category, rule.Code, rule.Message, rule.Retryable, Tail(text));
+                return new FailureInfo(rule.Category, rule.Code, rule.Message, rule.Retryable, Tail(text)) { ExitCode = context.ExitCode };
             }
         }
 
         // No recognisable text: fall back to what the process itself did.
         if (context.Stage == FailureStage.Startup && !context.ListenerWasReady && context.ExitCode is null)
         {
-            return new FailureInfo(FailureCategory.Forwarding, "startup.timeout", "The SOCKS tunnel did not become available in time.", true, Tail(text));
+            return new FailureInfo(FailureCategory.Forwarding, "startup.timeout", "The SOCKS tunnel did not become available in time.", true, Tail(text)) { ExitCode = context.ExitCode };
         }
 
-        var code = context.ExitCode is { } c ? $" (exit code {c})" : string.Empty;
         return context.Stage switch
         {
-            FailureStage.Startup => new FailureInfo(FailureCategory.Unknown, "ssh.exited.startup", "The SSH process ended before the tunnel was ready" + code + ".", true, Tail(text)),
-            _ => new FailureInfo(FailureCategory.Unknown, "ssh.exited", "The SSH process exited unexpectedly" + code + ".", true, Tail(text)),
+            FailureStage.Startup => new FailureInfo(FailureCategory.Unknown, "ssh.exited.startup", "The SSH process ended before the tunnel was ready.", true, Tail(text)) { ExitCode = context.ExitCode },
+            _ => new FailureInfo(FailureCategory.Unknown, "ssh.exited", "The SSH process exited unexpectedly.", true, Tail(text)) { ExitCode = context.ExitCode },
         };
     }
 

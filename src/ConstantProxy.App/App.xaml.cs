@@ -4,7 +4,9 @@ using ConstantProxy.App.ViewModels;
 using ConstantProxy.Core;
 using ConstantProxy.Core.Analytics;
 using ConstantProxy.Core.Connection;
+using System.Globalization;
 using ConstantProxy.Core.Desktop;
+using ConstantProxy.Core.Localization;
 using ConstantProxy.Core.Logging;
 using ConstantProxy.Core.Models;
 using ConstantProxy.Core.Traffic;
@@ -27,6 +29,7 @@ public partial class App : Application
     private MainViewModel? viewModel;
     private MainWindow? window;
     private AppLog? log;
+    private LocalizationService? loc;
     private bool exiting;
     private bool hintShown;
 
@@ -40,7 +43,7 @@ public partial class App : Application
     /// Opens the analytics database. Analytics problems never stop the application: on failure history is simply
     /// unavailable and the user is told why.
     /// </summary>
-    private static (IAnalyticsStore? Store, string? Notice) OpenAnalytics(AppPaths paths, AppConfig config, IAppLog log)
+    private static (IAnalyticsStore? Store, string? Notice) OpenAnalytics(AppPaths paths, AppConfig config, IAppLog log, ILocalizer loc)
     {
         if (!config.Analytics.StoreHistory)
         {
@@ -52,19 +55,19 @@ public partial class App : Application
         {
             var result = SqliteAnalyticsStore.Open(path, log);
             var notice = result.Status == StoreOpenStatus.RecoveredFromCorruption
-                ? $"The analytics database was damaged and has been set aside:\n\n{result.BackupPath}\n\nA new empty database is in use."
+                ? loc.Format("dialog.analyticsDamaged", result.BackupPath ?? string.Empty)
                 : null;
             return (result.Store, notice);
         }
         catch (DatabaseTooNewException ex)
         {
             log.Error("analytics", ex.Message, ex);
-            return (null, ex.Message + "\n\nHistory is unavailable in this session.");
+            return (null, loc.Format("dialog.analyticsTooNew", ex.DatabaseVersion, ex.SupportedVersion));
         }
         catch (Exception ex) when (ex is SqliteException or IOException or UnauthorizedAccessException)
         {
             log.Error("analytics", "The analytics database could not be opened.", ex);
-            return (null, "The analytics database could not be opened:\n\n" + ex.Message + "\n\nHistory is unavailable in this session.");
+            return (null, loc.Format("dialog.analyticsOpenFailed", ex.Message));
         }
     }
 
@@ -103,10 +106,15 @@ public partial class App : Application
         var configService = new ConfigurationService(paths.ConfigFile, log);
         var load = configService.Load();
         var config = load.Config;
+
+        // Windows UI language on first launch, a manual choice afterwards (SPEC §30).
+        loc = new LocalizationService(LanguageCodes.Resolve(config.Interface.Language, CultureInfo.CurrentUICulture));
+        LocalizationSource.Instance.Attach(loc);
+
         if (load.Status == ConfigLoadStatus.RecoveredFromCorruption)
         {
             MessageBox.Show(
-                $"The configuration file could not be read and was set aside.\n\n{load.BackupPath}\n\nDefault settings are in use.",
+                loc.Format("dialog.configCorrupt", load.BackupPath ?? string.Empty),
                 VersionInfo.ProductName,
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
@@ -125,7 +133,7 @@ public partial class App : Application
             trafficMonitor: bridge);
         var sampling = new TrafficSamplingService(bridge);
 
-        var (store, notice) = OpenAnalytics(paths, config, log);
+        var (store, notice) = OpenAnalytics(paths, config, log, loc);
         AnalyticsRecorder? recorder = null;
         if (store is not null)
         {
@@ -147,14 +155,14 @@ public partial class App : Application
             RepairStartupEntry(startup, log);
         }
 
-        var statistics = new StatisticsViewModel(store, paths, config, manager, new WpfExportDialog(), log, Dispatcher);
-        viewModel = new MainViewModel(manager, sampling, recorder, statistics, startup, configService, config, log, Dispatcher);
+        var statistics = new StatisticsViewModel(store, paths, config, manager, new WpfExportDialog(), loc, log, Dispatcher);
+        viewModel = new MainViewModel(manager, sampling, recorder, statistics, startup, loc, configService, config, log, Dispatcher);
 
         window = new MainWindow { DataContext = viewModel };
         MainWindow = window;
 
         tray = new TrayController(
-            new TrayTexts("Open constantproxy", "Connect", "Disconnect", "Reconnect", "Settings", "Exit"),
+            BuildTrayTexts(),
             new TrayActions(
                 Open: () => ShowMainWindow(),
                 Connect: () => _ = viewModel.ConnectFromTrayAsync(),
@@ -162,7 +170,14 @@ public partial class App : Application
                 Reconnect: () => _ = viewModel.ReconnectFromTrayAsync(),
                 Settings: () => ShowMainWindow(openSettings: true),
                 Exit: () => _ = RequestExitAsync()));
-        viewModel.StateChangedForTray += state => tray?.Update(state, $"constantproxy - {state}");
+        viewModel.StateChangedForTray += _ => RefreshTray();
+        loc.LanguageChanged += () => Dispatcher.BeginInvoke(() =>
+        {
+            tray?.SetTexts(BuildTrayTexts());
+            RefreshTray();
+        });
+
+        RefreshTray();
 
         notifications = new NotificationService(() => config.Notifications, SystemClock.Instance, n => Dispatcher.BeginInvoke(() => ShowNotification(n)));
         notifications.Attach(manager);
@@ -178,6 +193,20 @@ public partial class App : Application
         {
             _ = viewModel.ConnectOnLaunchAsync();
         }
+    }
+
+    private TrayTexts BuildTrayTexts() => new(
+        loc!.Get("tray.open"), loc.Get("tray.connect"), loc.Get("tray.disconnect"),
+        loc.Get("tray.reconnect"), loc.Get("tray.settings"), loc.Get("tray.exit"));
+
+    private void RefreshTray()
+    {
+        if (viewModel is null || tray is null || loc is null)
+        {
+            return;
+        }
+
+        tray.Update(viewModel.CurrentState, loc.Format("tray.tooltip", LocalizedText.State(loc, viewModel.CurrentState)));
     }
 
     /// <summary>Brings the main window to the foreground, restoring it from the tray or a minimized state.</summary>
@@ -217,7 +246,7 @@ public partial class App : Application
         if (!hintShown && tray is not null)
         {
             hintShown = true;
-            tray.ShowBalloon("constantproxy", "constantproxy is still running in the notification area. Use Exit in its menu to quit.", System.Windows.Forms.ToolTipIcon.Info);
+            tray.ShowBalloon(VersionInfo.ProductName, loc?.Get("tray.hint") ?? string.Empty, System.Windows.Forms.ToolTipIcon.Info);
         }
     }
 
@@ -287,7 +316,7 @@ public partial class App : Application
             return;
         }
 
-        var content = NotificationText.Compose(notification);
+        var content = NotificationText.Compose(notification, loc!);
         var icon = content.Severity switch
         {
             NotificationSeverity.Error => System.Windows.Forms.ToolTipIcon.Error,

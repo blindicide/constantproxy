@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Windows;
 using System.Windows.Media;
+using ConstantProxy.Core.Localization;
 using ConstantProxy.Core.Traffic;
 
 namespace ConstantProxy.App;
@@ -42,6 +43,15 @@ public sealed class TrafficGraph : FrameworkElement
         get => (string)GetValue(EmptyTextProperty);
         set => SetValue(EmptyTextProperty, value);
     }
+
+    public TrafficGraph()
+    {
+        // Redraw when the language changes so the legend is re-rendered in the new language.
+        Loaded += (_, _) => LocalizationSource.Instance.PropertyChanged += OnLanguageChanged;
+        Unloaded += (_, _) => LocalizationSource.Instance.PropertyChanged -= OnLanguageChanged;
+    }
+
+    private void OnLanguageChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e) => InvalidateVisual();
 
     protected override void OnRender(DrawingContext dc)
     {
@@ -86,9 +96,10 @@ public sealed class TrafficGraph : FrameworkElement
         DrawSeries(dc, visible, start, plot, max, p => p.DownloadRate, new Pen(Brushes.SeaGreen, 1.5));
         DrawSeries(dc, visible, start, plot, max, p => p.UploadRate, new Pen(Brushes.DarkOrange, 1.5) { DashStyle = DashStyles.Dash });
 
+        var loc = LocalizationSource.Instance.Service;
         var label = new FormattedText(
-            "↓ solid   ↑ dashed   max " + TrafficFormatter.FormatRate(max, CultureInfo.CurrentUICulture),
-            CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, new Typeface("Segoe UI"), 10, text, dpi);
+            loc.Format("graph.legend.live", LocalizedText.Rate(loc, max)),
+            loc.Culture, FlowDirection.LeftToRight, new Typeface("Segoe UI"), 10, text, dpi);
         dc.DrawText(label, new Point(pad + 2, 1));
     }
 

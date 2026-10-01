@@ -25,4 +25,7 @@ public sealed record FailureInfo(
 {
     /// <summary>Values substituted into the localized message (for example the port number).</summary>
     public IReadOnlyList<string> Arguments { get; init; } = Array.Empty<string>();
+
+    /// <summary>Exit code of the ssh process, when the failure involved it ending.</summary>
+    public int? ExitCode { get; init; }
 }
