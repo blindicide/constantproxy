@@ -1,0 +1,204 @@
+<Window x:Class="ConstantProxy.App.Views.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:loc="clr-namespace:ConstantProxy.App"
+        Title="{loc:Loc settings.title}" Icon="pack://application:,,,/constantproxy.ico" Width="720" Height="620" MinWidth="620" MinHeight="460"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False" UseLayoutRounding="True">
+    <Window.Resources>
+        <Style TargetType="TextBox">
+            <Setter Property="Margin" Value="0,2,0,8" />
+            <Setter Property="Padding" Value="3" />
+            <Style.Triggers>
+                <Trigger Property="Validation.HasError" Value="True">
+                    <Setter Property="ToolTip" Value="{Binding RelativeSource={RelativeSource Self}, Path=(Validation.Errors)[0].ErrorContent}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        <Style TargetType="ComboBox">
+            <Setter Property="Margin" Value="0,2,0,8" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+            <Setter Property="MinWidth" Value="240" />
+        </Style>
+        <Style TargetType="CheckBox">
+            <Setter Property="Margin" Value="0,2,0,8" />
+        </Style>
+        <Style TargetType="Label">
+            <Setter Property="Padding" Value="0" />
+        </Style>
+        <Style TargetType="Button">
+            <Setter Property="Padding" Value="14,5" />
+            <Setter Property="MinWidth" Value="84" />
+            <Setter Property="Margin" Value="8,0,0,0" />
+        </Style>
+        <Style x:Key="Hint" TargetType="TextBlock">
+            <Setter Property="Opacity" Value="0.75" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="Margin" Value="0,-4,0,8" />
+        </Style>
+    </Window.Resources>
+    <DockPanel Margin="12">
+        <StackPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
+            <TextBlock Text="{Binding ErrorSummary}" Foreground="Firebrick" TextWrapping="Wrap" />
+            <TextBlock Text="{Binding WarningSummary}" TextWrapping="Wrap" Opacity="0.85" Margin="0,2,0,0" />
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
+                <Button Content="{loc:Loc button.ok}" Command="{Binding OkCommand}" IsDefault="True" />
+                <Button Content="{loc:Loc button.cancel}" Command="{Binding CancelCommand}" IsCancel="True" />
+            </StackPanel>
+        </StackPanel>
+
+        <TabControl TabStripPlacement="Left">
+            <!-- Connection -->
+            <TabItem Header="{loc:Loc section.connection}">
+                <ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="12">
+                    <Label Content="{loc:Loc label.profileName}" Target="{Binding ElementName=ProfileNameBox}" />
+                    <TextBox x:Name="ProfileNameBox" MaxLength="64" Text="{Binding ProfileName, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True}" />
+
+                    <Label Content="{loc:Loc label.sshTarget}" Target="{Binding ElementName=HostBox}" />
+                    <TextBox x:Name="HostBox" ToolTip="{loc:Loc tooltip.sshTarget}" Text="{Binding Host, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True}" />
+
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="12" /><ColumnDefinition Width="120" /></Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <Label Content="{loc:Loc label.socksAddress}" Target="{Binding ElementName=BindBox}" />
+                            <TextBox x:Name="BindBox" ToolTip="{loc:Loc tooltip.socksAddress}" Text="{Binding BindAddress, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <Label Content="{loc:Loc label.socksPort}" Target="{Binding ElementName=PortBox}" />
+                            <TextBox x:Name="PortBox" ToolTip="{loc:Loc tooltip.socksPort}" Text="{Binding Port, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True}" />
+                        </StackPanel>
+                    </Grid>
+
+                    <Label Content="{loc:Loc label.sshExecutable}" Target="{Binding ElementName=SshBox}" />
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <TextBox x:Name="SshBox" ToolTip="{loc:Loc tooltip.sshExecutable}" Text="{Binding SshExecutable, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True}" />
+                        <Button Grid.Column="1" Content="{loc:Loc button.browse}" Command="{Binding BrowseSshCommand}" Margin="8,2,0,8" />
+                    </Grid>
+                    <TextBlock Style="{StaticResource Hint}" Text="{Binding DetectedSsh}" />
+
+                    <CheckBox Content="{loc:Loc check.ipv4}" IsChecked="{Binding IPv4Only}" />
+
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="12" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <Label Content="{loc:Loc label.aliveInterval}" Target="{Binding ElementName=AliveBox}" />
+                            <TextBox x:Name="AliveBox" ToolTip="{loc:Loc tooltip.alive}" Text="{Binding ServerAliveInterval, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <Label Content="{loc:Loc label.aliveCountMax}" Target="{Binding ElementName=CountBox}" />
+                            <TextBox x:Name="CountBox" ToolTip="{loc:Loc tooltip.alive}" Text="{Binding ServerAliveCountMax, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True}" />
+                        </StackPanel>
+                    </Grid>
+                    <CheckBox Content="{loc:Loc check.exitOnForward}" IsChecked="{Binding ExitOnForwardFailure}" />
+                    <Label Content="{loc:Loc label.startupTimeout}" Target="{Binding ElementName=StartupBox}" />
+                    <TextBox x:Name="StartupBox" Width="120" HorizontalAlignment="Left" Text="{Binding StartupTimeoutSeconds, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True}" />
+                </StackPanel></ScrollViewer>
+            </TabItem>
+
+            <!-- Reconnect -->
+            <TabItem Header="{loc:Loc section.reconnect}">
+                <ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="12">
+                    <CheckBox Content="{loc:Loc check.autoReconnect}" IsChecked="{Binding AutoReconnect}" />
+                    <Label Content="{loc:Loc label.reconnectDelays}" Target="{Binding ElementName=DelaysBox}" />
+                    <TextBox x:Name="DelaysBox" ToolTip="{loc:Loc tooltip.delays}" Text="{Binding ReconnectDelays, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True}" />
+                    <Label Content="{loc:Loc label.maxDelay}" Target="{Binding ElementName=MaxDelayBox}" />
+                    <TextBox x:Name="MaxDelayBox" Width="120" HorizontalAlignment="Left" Text="{Binding MaxDelaySeconds, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True}" />
+                    <Label Content="{loc:Loc label.healthyReset}" Target="{Binding ElementName=ResetBox}" />
+                    <TextBox x:Name="ResetBox" Width="120" HorizontalAlignment="Left" Text="{Binding HealthyResetSeconds, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True}" />
+                    <Label Content="{loc:Loc label.jitter}" Target="{Binding ElementName=JitterBox}" />
+                    <TextBox x:Name="JitterBox" Width="120" HorizontalAlignment="Left" Text="{Binding JitterPercent, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True}" />
+                </StackPanel></ScrollViewer>
+            </TabItem>
+
+            <!-- Monitoring -->
+            <TabItem Header="{loc:Loc section.monitoring}">
+                <ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="12">
+                    <CheckBox Content="{loc:Loc check.health}" IsChecked="{Binding HealthEnabled}" />
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="12" /><ColumnDefinition Width="120" /></Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <Label Content="{loc:Loc label.healthHost}" Target="{Binding ElementName=HealthHostBox}" />
+                            <TextBox x:Name="HealthHostBox" ToolTip="{loc:Loc tooltip.healthHost}" Text="{Binding HealthHost, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <Label Content="{loc:Loc label.healthPort}" Target="{Binding ElementName=HealthPortBox}" />
+                            <TextBox x:Name="HealthPortBox" Text="{Binding HealthPort, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True}" />
+                        </StackPanel>
+                    </Grid>
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="12" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <Label Content="{loc:Loc label.healthInterval}" Target="{Binding ElementName=HealthIntervalBox}" />
+                            <TextBox x:Name="HealthIntervalBox" Text="{Binding HealthInterval, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <Label Content="{loc:Loc label.healthTimeout}" Target="{Binding ElementName=HealthTimeoutBox}" />
+                            <TextBox x:Name="HealthTimeoutBox" Text="{Binding HealthTimeout, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True}" />
+                        </StackPanel>
+                    </Grid>
+                    <Label Content="{loc:Loc label.failureThreshold}" Target="{Binding ElementName=ThresholdBox}" />
+                    <TextBox x:Name="ThresholdBox" Width="120" HorizontalAlignment="Left" Text="{Binding FailureThreshold, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True}" />
+                    <CheckBox Content="{loc:Loc check.reconnectOnFailure}" IsChecked="{Binding ReconnectOnFailure}" />
+                    <Label Content="{loc:Loc label.reconnectAfter}" Target="{Binding ElementName=ReconnectAfterBox}" />
+                    <TextBox x:Name="ReconnectAfterBox" Width="120" HorizontalAlignment="Left" Text="{Binding ReconnectAfterFailures, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True}" />
+                </StackPanel></ScrollViewer>
+            </TabItem>
+
+            <!-- Analytics -->
+            <TabItem Header="{loc:Loc section.analytics}">
+                <ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="12">
+                    <CheckBox Content="{loc:Loc check.storeHistory}" IsChecked="{Binding StoreHistory}" />
+                    <Label Content="{loc:Loc label.retention}" Target="{Binding ElementName=RetentionBox}" />
+                    <ComboBox x:Name="RetentionBox" ToolTip="{loc:Loc tooltip.retention}" ItemsSource="{Binding RetentionOptions}" SelectedValuePath="Value" DisplayMemberPath="Label" SelectedValue="{Binding RetentionDays}" />
+                    <Label Content="{loc:Loc label.databasePath}" Target="{Binding ElementName=DatabaseBox}" />
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <TextBox x:Name="DatabaseBox" Text="{Binding DatabasePath, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True}" />
+                        <Button Grid.Column="1" Content="{loc:Loc button.browse}" Command="{Binding BrowseDatabaseCommand}" Margin="8,2,0,8" />
+                    </Grid>
+                    <Button Content="{loc:Loc button.openDataFolder}" Command="{Binding OpenDataFolderCommand}" HorizontalAlignment="Left" Margin="0,0,0,8" />
+                    <TextBlock Style="{StaticResource Hint}" Text="{loc:Loc settings.restartNote}" />
+                </StackPanel></ScrollViewer>
+            </TabItem>
+
+            <!-- Interface -->
+            <TabItem Header="{loc:Loc section.interface}">
+                <ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="12">
+                    <Label Content="{loc:Loc label.language}" Target="{Binding ElementName=LanguageBox}" />
+                    <ComboBox x:Name="LanguageBox" ItemsSource="{Binding LanguageOptions}" SelectedValuePath="Value" DisplayMemberPath="Label" SelectedValue="{Binding Language}" />
+                    <CheckBox Content="{loc:Loc check.startMinimized}" IsChecked="{Binding StartMinimized}" />
+                    <CheckBox Content="{loc:Loc check.closeToTray}" IsChecked="{Binding CloseToTray}" />
+                    <CheckBox Content="{loc:Loc check.minimizeToTray}" IsChecked="{Binding MinimizeToTray}" />
+                    <CheckBox Content="{loc:Loc check.startWithWindows}" IsChecked="{Binding StartWithWindows}" />
+                    <CheckBox Content="{loc:Loc check.connectOnLaunch}" IsChecked="{Binding ConnectOnLaunch}" />
+                </StackPanel></ScrollViewer>
+            </TabItem>
+
+            <!-- Notifications -->
+            <TabItem Header="{loc:Loc section.notifications}">
+                <ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="12">
+                    <CheckBox Content="{loc:Loc check.notifyFailure}" IsChecked="{Binding NotifyOnFailure}" />
+                    <CheckBox Content="{loc:Loc check.notifyRecovery}" IsChecked="{Binding NotifyOnRecovery}" />
+                    <Label Content="{loc:Loc label.outageSeconds}" Target="{Binding ElementName=OutageBox}" />
+                    <TextBox x:Name="OutageBox" Width="120" HorizontalAlignment="Left" Text="{Binding MinimumOutageSeconds, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True}" />
+                </StackPanel></ScrollViewer>
+            </TabItem>
+
+            <!-- Advanced -->
+            <TabItem Header="{loc:Loc section.advanced}">
+                <ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="12">
+                    <Label Content="{loc:Loc label.additionalArgs}" Target="{Binding ElementName=ArgsBox}" />
+                    <TextBox x:Name="ArgsBox" ToolTip="{loc:Loc tooltip.additionalArgs}" Text="{Binding AdditionalArguments, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True}" />
+                    <CheckBox Content="{loc:Loc check.batchMode}" IsChecked="{Binding BatchMode}" />
+                    <Label Content="{loc:Loc label.trafficMode}" Target="{Binding ElementName=TrafficModeBox}" />
+                    <ComboBox x:Name="TrafficModeBox" ToolTip="{loc:Loc tooltip.trafficMode}" ItemsSource="{Binding TrafficModeOptions}" SelectedValuePath="Value" DisplayMemberPath="Label" SelectedValue="{Binding TrafficMode}" />
+                    <Label Content="{loc:Loc label.logVerbosity}" Target="{Binding ElementName=VerbosityBox}" />
+                    <ComboBox x:Name="VerbosityBox" ItemsSource="{Binding LogVerbosityOptions}" SelectedValuePath="Value" DisplayMemberPath="Label" SelectedValue="{Binding LogVerbosity}" />
+                    <Label Content="{loc:Loc label.sshCommand}" Target="{Binding ElementName=CommandBox}" />
+                    <TextBox x:Name="CommandBox" Text="{Binding CommandPreview, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" FontFamily="Consolas" FontSize="12" MinHeight="64"
+                             VerticalScrollBarVisibility="Auto" />
+                </StackPanel></ScrollViewer>
+            </TabItem>
+        </TabControl>
+    </DockPanel>
+</Window>

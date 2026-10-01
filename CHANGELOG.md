@@ -4,6 +4,21 @@ All notable changes to constantproxy are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.8.0] - 2026-10-01
+
+### Added
+- Settings dialog with all sections (Connection, Reconnect, Monitoring, Analytics, Interface, Notifications, Advanced), live per-field validation with tooltips, an error summary and OK disabled until everything is valid; nothing is written until OK.
+- Diagnostics window: application, OS and .NET versions, configured and resolved ssh, OpenSSH version (looked up off the UI thread), profile, SSH PID, state, SOCKS endpoint, session start, reconnect count, database and log locations, last failure; "Copy diagnostics" with SSH target, profile name and local paths hidden unless explicitly included.
+- Read-only preview of the generated SSH command (in Settings and Diagnostics) that shows a placeholder for the bridge's internal port and redacts secret-looking values.
+- First-run setup limited to target, port and ssh location, with automatic OpenSSH detection and a browse button.
+- About dialog with version, license, repository link and description.
+- Tooltips explaining the non-obvious settings; keyboard access keys throughout.
+- Guard test that no user-visible text is hardcoded in XAML.
+
+### Changed
+- The main window no longer carries an inline settings form; it keeps the profile bar, status, traffic, graph and the Connect, Disconnect, Reconnect now and Settings buttons.
+- Validation messages are attached to the field that caused them (reconnect and monitoring fields are reported individually).
+
 ## [0.7.0] - 2026-10-01
 
 ### Added

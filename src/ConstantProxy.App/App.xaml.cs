@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Windows;
+using ConstantProxy.App.Services;
 using ConstantProxy.App.ViewModels;
 using ConstantProxy.Core;
 using ConstantProxy.Core.Analytics;
@@ -156,7 +157,7 @@ public partial class App : Application
         }
 
         var statistics = new StatisticsViewModel(store, paths, config, manager, new WpfExportDialog(), loc, log, Dispatcher);
-        viewModel = new MainViewModel(manager, sampling, recorder, statistics, startup, loc, new WpfConfirmDialog(), configService, config, log, Dispatcher);
+        viewModel = new MainViewModel(manager, sampling, recorder, statistics, startup, loc, new WpfConfirmDialog(), new WpfWindowService(), paths, configService, config, log, Dispatcher);
 
         window = new MainWindow { DataContext = viewModel };
         MainWindow = window;
@@ -186,12 +187,17 @@ public partial class App : Application
 
         SessionEnding += OnSessionEnding;
 
-        if (!config.Interface.StartMinimized)
+        if (!config.Interface.StartMinimized || load.Status == ConfigLoadStatus.Created)
         {
             window.Show();
         }
 
-        if (config.Interface.ConnectOnLaunch)
+        if (load.Status == ConfigLoadStatus.Created)
+        {
+            // First launch: a minimal setup instead of a wall of options (SPEC §83).
+            viewModel.RunFirstRun();
+        }
+        else if (config.Interface.ConnectOnLaunch)
         {
             _ = viewModel.ConnectOnLaunchAsync();
         }

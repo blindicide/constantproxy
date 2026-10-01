@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:ConstantProxy.App"
         xmlns:loc="clr-namespace:ConstantProxy.App"
-        Title="constantproxy" Icon="constantproxy.ico" Width="460" Height="780" MinWidth="440" MinHeight="460"
+        Title="constantproxy" Icon="constantproxy.ico" Width="460" Height="680" MinWidth="440" MinHeight="460"
         WindowStartupLocation="CenterScreen" UseLayoutRounding="True">
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
@@ -18,13 +18,19 @@
         </Style>
     </Window.Resources>
     <DockPanel Margin="14">
-        <TextBlock DockPanel.Dock="Bottom" Text="{Binding VersionText}" HorizontalAlignment="Right"
-                   Opacity="0.6" Margin="0,8,0,0" />
+        <Grid DockPanel.Dock="Bottom" Margin="0,8,0,0">
+            <StackPanel Orientation="Horizontal">
+                <Button Content="{loc:Loc button.diagnostics}" Command="{Binding DiagnosticsCommand}" MinWidth="0" Padding="8,2" Margin="0,0,6,0" />
+                <Button Content="{loc:Loc button.about}" Command="{Binding AboutCommand}" MinWidth="0" Padding="8,2" Margin="0" />
+            </StackPanel>
+            <TextBlock Text="{Binding VersionText}" HorizontalAlignment="Right" VerticalAlignment="Center" Opacity="0.6" />
+        </Grid>
 
         <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,10,0,0">
             <Button Content="{loc:Loc button.connect}" Command="{Binding ConnectCommand}" IsDefault="True" />
             <Button Content="{loc:Loc button.disconnect}" Command="{Binding DisconnectCommand}" />
             <Button Content="{loc:Loc button.reconnect}" Command="{Binding ReconnectCommand}" />
+            <Button Content="{loc:Loc button.settings}" Command="{Binding SettingsCommand}" />
         </StackPanel>
 
         <Grid DockPanel.Dock="Top" Margin="0,0,0,8">
@@ -112,79 +118,7 @@
                              VerticalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="11" />
                 </Expander>
 
-                <Expander x:Name="SettingsExpander" Header="{loc:Loc header.settings}" Margin="0,14,0,0" IsExpanded="True">
-                    <StackPanel Margin="0,6,0,0">
-                        <Label Content="{loc:Loc label.language}" Target="{Binding ElementName=LanguageBox}" Padding="0" />
-                        <ComboBox x:Name="LanguageBox" ItemsSource="{Binding LanguageOptions}" SelectedValuePath="Value" DisplayMemberPath="Label"
-                                  SelectedValue="{Binding LanguageSetting}" HorizontalAlignment="Left" MinWidth="220" Margin="0,2,0,8" />
-                        <Label Content="{loc:Loc label.profileName}" Target="{Binding ElementName=ProfileNameBox}" Padding="0" />
-                        <TextBox x:Name="ProfileNameBox" Text="{Binding ProfileName, UpdateSourceTrigger=PropertyChanged}" MaxLength="64" />
-                        <Label Content="{loc:Loc label.sshTarget}" Target="{Binding ElementName=HostBox}" Padding="0" />
-                        <TextBox x:Name="HostBox" Text="{Binding Host, UpdateSourceTrigger=PropertyChanged}" />
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="90" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Margin="0,0,8,0">
-                                <Label Content="{loc:Loc label.socksAddress}" Target="{Binding ElementName=BindBox}" Padding="0" />
-                                <TextBox x:Name="BindBox" Text="{Binding BindAddress, UpdateSourceTrigger=PropertyChanged}" />
-                            </StackPanel>
-                            <StackPanel Grid.Column="1">
-                                <Label Content="{loc:Loc label.socksPort}" Target="{Binding ElementName=PortBox}" Padding="0" />
-                                <TextBox x:Name="PortBox" Text="{Binding Port, UpdateSourceTrigger=PropertyChanged}" />
-                            </StackPanel>
-                        </Grid>
-                        <Label Content="{loc:Loc label.sshExecutable}" Target="{Binding ElementName=ExeBox}" Padding="0" />
-                        <TextBox x:Name="ExeBox" Text="{Binding SshExecutable, UpdateSourceTrigger=PropertyChanged}" />
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Margin="0,0,8,0">
-                                <Label Content="{loc:Loc label.aliveInterval}" Target="{Binding ElementName=AliveBox}" Padding="0" />
-                                <TextBox x:Name="AliveBox" Text="{Binding ServerAliveInterval, UpdateSourceTrigger=PropertyChanged}" />
-                            </StackPanel>
-                            <StackPanel Grid.Column="1">
-                                <Label Content="{loc:Loc label.aliveCountMax}" Target="{Binding ElementName=CountBox}" Padding="0" />
-                                <TextBox x:Name="CountBox" Text="{Binding ServerAliveCountMax, UpdateSourceTrigger=PropertyChanged}" />
-                            </StackPanel>
-                        </Grid>
-                        <Label Content="{loc:Loc label.additionalArgs}" Target="{Binding ElementName=ExtraBox}" Padding="0" />
-                        <TextBox x:Name="ExtraBox" Text="{Binding AdditionalArguments, UpdateSourceTrigger=PropertyChanged}" />
-                        <CheckBox Content="{loc:Loc check.ipv4}" IsChecked="{Binding IPv4Only}" Margin="0,2,0,4" />
-                        <CheckBox Content="{loc:Loc check.autoReconnect}" IsChecked="{Binding AutoReconnect}" Margin="0,0,0,4" />
-                        <CheckBox Content="{loc:Loc check.traffic}" IsChecked="{Binding MeasureTraffic}" Margin="0,0,0,4" />
-                        <CheckBox Content="{loc:Loc check.health}" IsChecked="{Binding HealthEnabled}" Margin="0,0,0,4" />
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="90" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Margin="0,0,8,0">
-                                <Label Content="{loc:Loc label.healthHost}" Target="{Binding ElementName=HealthHostBox}" Padding="0" />
-                                <TextBox x:Name="HealthHostBox" Text="{Binding HealthHost, UpdateSourceTrigger=PropertyChanged}" />
-                            </StackPanel>
-                            <StackPanel Grid.Column="1">
-                                <Label Content="{loc:Loc label.healthPort}" Target="{Binding ElementName=HealthPortBox}" Padding="0" />
-                                <TextBox x:Name="HealthPortBox" Text="{Binding HealthPort, UpdateSourceTrigger=PropertyChanged}" />
-                            </StackPanel>
-                        </Grid>
-                        <CheckBox Content="{loc:Loc check.startWithWindows}" IsChecked="{Binding StartWithWindows}" Margin="0,0,0,4" />
-                        <CheckBox Content="{loc:Loc check.connectOnLaunch}" IsChecked="{Binding ConnectOnLaunch}" Margin="0,0,0,4" />
-                        <CheckBox Content="{loc:Loc check.startMinimized}" IsChecked="{Binding StartMinimized}" Margin="0,0,0,4" />
-                        <CheckBox Content="{loc:Loc check.closeToTray}" IsChecked="{Binding CloseToTray}" Margin="0,0,0,4" />
-                        <CheckBox Content="{loc:Loc check.minimizeToTray}" IsChecked="{Binding MinimizeToTray}" Margin="0,0,0,4" />
-                        <CheckBox Content="{loc:Loc check.notifyFailure}" IsChecked="{Binding NotifyOnFailure}" Margin="0,0,0,4" />
-                        <CheckBox Content="{loc:Loc check.notifyRecovery}" IsChecked="{Binding NotifyOnRecovery}" Margin="0,0,0,4" />
-                        <Label Content="{loc:Loc label.outageSeconds}" Target="{Binding ElementName=OutageBox}" Padding="0" />
-                        <TextBox x:Name="OutageBox" Text="{Binding MinimumOutageSeconds, UpdateSourceTrigger=PropertyChanged}" Width="90" HorizontalAlignment="Left" />
-                        <Button Content="{loc:Loc button.save}" Command="{Binding SaveCommand}" HorizontalAlignment="Left" Margin="0,4,0,6" />
-                        <TextBlock Text="{Binding ValidationText}" Foreground="Firebrick" TextWrapping="Wrap" />
-                        <TextBlock Text="{Binding SettingsNote}" TextWrapping="Wrap" Opacity="0.8" Margin="0,2,0,0" />
-                    </StackPanel>
-                </Expander>
+                <TextBlock Text="{Binding Notice}" TextWrapping="Wrap" Margin="0,10,0,0" Foreground="Firebrick" />
             </StackPanel>
         </ScrollViewer>
             </TabItem>

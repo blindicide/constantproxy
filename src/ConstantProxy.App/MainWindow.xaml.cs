@@ -23,12 +23,13 @@ public partial class MainWindow : Window
         viewModel.Statistics.SetActive(ReferenceEquals(MainTabs.SelectedItem, StatisticsTab));
     }
 
-    /// <summary>Opens the connection settings (used by the tray menu).</summary>
+    /// <summary>Opens the settings dialog (used by the tray menu).</summary>
     public void ShowSettings()
     {
-        MainTabs.SelectedIndex = 0;
-        SettingsExpander.IsExpanded = true;
-        SettingsExpander.BringIntoView();
+        if (DataContext is MainViewModel viewModel)
+        {
+            viewModel.OpenSettings();
+        }
     }
 
     protected override void OnStateChanged(EventArgs e)

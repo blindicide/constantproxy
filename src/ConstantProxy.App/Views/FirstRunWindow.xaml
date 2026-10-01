@@ -1,0 +1,34 @@
+<Window x:Class="ConstantProxy.App.Views.FirstRunWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:loc="clr-namespace:ConstantProxy.App"
+        Title="{loc:Loc firstrun.title}" Icon="pack://application:,,,/constantproxy.ico" Width="480" SizeToContent="Height" ResizeMode="NoResize"
+        WindowStartupLocation="CenterScreen" UseLayoutRounding="True">
+    <StackPanel Margin="20">
+        <TextBlock Text="{loc:Loc firstrun.title}" FontSize="20" FontWeight="SemiBold" />
+        <TextBlock Text="{loc:Loc firstrun.intro}" TextWrapping="Wrap" Margin="0,8,0,14" />
+
+        <Label Content="{loc:Loc label.sshTarget}" Target="{Binding ElementName=HostBox}" Padding="0" />
+        <TextBox x:Name="HostBox" Text="{Binding Host, UpdateSourceTrigger=PropertyChanged}" Margin="0,2,0,10" Padding="3" ToolTip="{loc:Loc tooltip.sshTarget}" />
+
+        <Label Content="{loc:Loc label.socksPort}" Target="{Binding ElementName=PortBox}" Padding="0" />
+        <TextBox x:Name="PortBox" Text="{Binding Port, UpdateSourceTrigger=PropertyChanged}" Width="110" HorizontalAlignment="Left" Margin="0,2,0,10" Padding="3" />
+
+        <Label Content="{loc:Loc label.sshExecutable}" Target="{Binding ElementName=SshBox}" Padding="0" />
+        <Grid Margin="0,2,0,2">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+            <TextBox x:Name="SshBox" Text="{Binding SshExecutable, UpdateSourceTrigger=PropertyChanged}" Padding="3" ToolTip="{loc:Loc tooltip.sshExecutable}" />
+            <Button Grid.Column="1" Content="{loc:Loc button.browse}" Command="{Binding BrowseCommand}" Margin="8,0,0,0" Padding="12,3" />
+        </Grid>
+        <TextBlock Text="{Binding DetectedText}" Opacity="0.75" TextWrapping="Wrap" Margin="0,0,0,10" />
+
+        <TextBlock Text="{loc:Loc firstrun.authNote}" TextWrapping="Wrap" Opacity="0.85" />
+        <TextBlock Text="{Binding Errors}" Foreground="Firebrick" TextWrapping="Wrap" Margin="0,8,0,0" />
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+            <Button Content="{loc:Loc firstrun.later}" Command="{Binding SkipCommand}" IsCancel="True" Padding="12,5" Margin="0,0,8,0" />
+            <Button Content="{loc:Loc firstrun.more}" Command="{Binding MoreCommand}" Padding="12,5" Margin="0,0,8,0" />
+            <Button Content="{loc:Loc button.connect}" Command="{Binding ConnectCommand}" IsDefault="True" Padding="16,5" MinWidth="90" />
+        </StackPanel>
+    </StackPanel>
+</Window>

@@ -7,3 +7,5 @@ global using ConstantProxy.Core.Traffic;
 global using ConstantProxy.Core.Analytics;
 global using ConstantProxy.Core.Desktop;
 global using ConstantProxy.Core.Localization;
+global using ConstantProxy.Core.Settings;
+global using ConstantProxy.Core.Diagnostics;
