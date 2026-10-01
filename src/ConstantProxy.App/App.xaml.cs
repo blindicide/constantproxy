@@ -72,11 +72,60 @@ public partial class App : Application
         }
     }
 
+    /// <summary>
+    /// Last-resort handlers (SPEC §50). A crash report is written next to the logs; the child ssh processes are ended by
+    /// the kill-on-close job object when the process dies, and any that survive are cleaned up at the next start.
+    /// </summary>
+    private void InstallCrashHandlers()
+    {
+        DispatcherUnhandledException += (_, args) =>
+        {
+            ReportCrash(args.Exception, "UI thread", showDialog: true);
+            args.Handled = true; // keep the tunnel supervised; the user decides whether to restart
+        };
+        AppDomain.CurrentDomain.UnhandledException += (_, args) =>
+        {
+            if (args.ExceptionObject is Exception ex)
+            {
+                ReportCrash(ex, args.IsTerminating ? "AppDomain (terminating)" : "AppDomain", showDialog: false);
+            }
+        };
+        TaskScheduler.UnobservedTaskException += (_, args) =>
+        {
+            log?.Error("app", "Unobserved task exception.", args.Exception);
+            args.SetObserved();
+        };
+    }
+
+    private void ReportCrash(Exception exception, string source, bool showDialog)
+    {
+        log?.Error("app", $"Unhandled exception ({source}).", exception);
+        var directory = AppPaths.ForCurrentUser().LogsDirectory;
+        var report = CrashReport.Write(directory, exception, VersionInfo.Version, DateTimeOffset.UtcNow, source);
+        if (!showDialog)
+        {
+            return;
+        }
+
+        var text = loc is null
+            ? $"Unexpected error: {exception.Message}"
+            : loc.Format("dialog.crash", exception.Message, report ?? loc.Get("dialog.crash.noReport"));
+        try
+        {
+            MessageBox.Show(text, VersionInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        catch (InvalidOperationException)
+        {
+            // The dispatcher is no longer usable; the report on disk is what matters.
+        }
+    }
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
         // Closing the main window may only hide it; exiting is always an explicit decision (tray menu or Exit).
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
+        InstallCrashHandlers();
 
         if (e.Args.Contains("--version", StringComparer.OrdinalIgnoreCase))
         {
@@ -112,6 +161,15 @@ public partial class App : Application
         loc = new LocalizationService(LanguageCodes.Resolve(config.Interface.Language, CultureInfo.CurrentUICulture));
         LocalizationSource.Instance.Attach(loc);
 
+        if (load.Status == ConfigLoadStatus.LoadedFromNewerVersion)
+        {
+            MessageBox.Show(
+                loc.Format("dialog.configNewer", load.FileVersion, AppConfig.CurrentSchemaVersion, load.BackupPath ?? string.Empty),
+                VersionInfo.ProductName,
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+
         if (load.Status == ConfigLoadStatus.RecoveredFromCorruption)
         {
             MessageBox.Show(
@@ -123,9 +181,17 @@ public partial class App : Application
 
         log.MinimumSeverity = config.LogVerbosity == LogVerbosity.Verbose ? LogSeverity.Debug : LogSeverity.Information;
 
+        // We hold the single-instance lock, so any recorded ssh from a previous run is a genuine leftover (SPEC §82).
+        var registry = new ChildProcessRegistry(Path.Combine(paths.Root, "children.json"), log: log);
+        var leftovers = registry.CleanupOrphans();
+        if (leftovers > 0)
+        {
+            log.Warn("app", $"Ended {leftovers} ssh process(es) left behind by a previous run.");
+        }
+
         var bridge = new BridgeTrafficMonitor(log);
         var manager = new ConnectionManager(
-            new SshProcessLauncher(),
+            new SshProcessLauncher(registry: registry),
             new ListenerStartupVerifier(SystemClock.Instance),
             SystemClock.Instance,
             log,

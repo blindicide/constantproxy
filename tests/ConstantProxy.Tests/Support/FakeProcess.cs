@@ -208,3 +208,27 @@ public sealed class FakeSocksProbe : ISocksProbe
         return tcs.Task;
     }
 }
+
+/// <summary>Collects log entries so tests can assert on what was logged.</summary>
+public sealed class RecordingLog : IAppLog
+{
+    private readonly object gate = new();
+
+    public List<(LogSeverity Severity, string Source, string Message)> Entries { get; } = new();
+
+    public void Log(LogSeverity severity, string source, string message, Exception? exception = null)
+    {
+        lock (gate)
+        {
+            Entries.Add((severity, source, message));
+        }
+    }
+
+    public List<(LogSeverity Severity, string Source, string Message)> Snapshot()
+    {
+        lock (gate)
+        {
+            return Entries.ToList();
+        }
+    }
+}

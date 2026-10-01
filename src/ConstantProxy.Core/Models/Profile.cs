@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace ConstantProxy.Core.Models;
 
 /// <summary>
@@ -32,6 +34,7 @@ public sealed class Profile
     /// <summary>Empty means automatic detection; otherwise a path or command name.</summary>
     public string SshExecutable { get; set; } = string.Empty;
 
+    [JsonPropertyName("ipv4Only")]
     public bool IPv4Only { get; set; } = true;
 
     public int ServerAliveInterval { get; set; } = 30;

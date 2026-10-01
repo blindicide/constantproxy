@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace ConstantProxy.Core.Models;
 
 public enum LogVerbosity
@@ -68,7 +70,8 @@ public sealed class AppConfig
 
     public NotificationConfig Notifications { get; set; } = new();
 
-    /// <summary>The active profile, or the first one if the stored id no longer exists.</summary>
+    /// <summary>The active profile, or the first one if the stored id no longer exists. Derived; never written to the file.</summary>
+    [JsonIgnore]
     public Profile ActiveProfile => Profiles.FirstOrDefault(p => p.Id == ActiveProfileId) ?? Profiles[0];
 
     /// <summary>

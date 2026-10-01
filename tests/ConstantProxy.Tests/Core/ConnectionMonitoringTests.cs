@@ -336,3 +336,27 @@ public class ConnectionMonitoringTests
         }
     }
 }
+
+public class SshOutputLoggingTests
+{
+    [Fact]
+    public async Task SshStderrIsLoggedAtNormalLevelUnderTheSshSourceAndStdoutOnlyAtDebug()
+    {
+        var clock = new FakeClock();
+        var launcher = new FakeLauncher(clock);
+        var log = new RecordingLog();
+        var manager = new ConnectionManager(launcher, new ScriptedVerifier(), clock, log);
+        await manager.ConnectAsync(new Profile { Host = "h" });
+        await TestWait.Until(() => manager.State == ConnectionState.Connected);
+
+        launcher.Last!.Emit(OutputStream.StandardError, "Warning: Permanently added 'h' to the list of known hosts.");
+        launcher.Last.Emit(OutputStream.StandardOutput, "some chatter");
+
+        var entries = log.Snapshot().Where(e => e.Source == "ssh").ToList();
+        Assert.Equal(2, entries.Count);
+        Assert.Equal(LogSeverity.Information, entries[0].Severity);
+        Assert.Contains("[stderr] Warning: Permanently added", entries[0].Message);
+        Assert.Equal(LogSeverity.Debug, entries[1].Severity);
+        await manager.DisposeAsync();
+    }
+}

@@ -1,0 +1,113 @@
+name: release
+
+# Release build (SPEC §53, §55, §57): every public release is built here from a version tag, never from a developer's machine.
+# Push a tag such as v1.0.0 whose number matches <Version> in Directory.Build.props.
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write   # create the GitHub Release and upload its files
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  DOTNET_NOLOGO: '1'
+
+jobs:
+  release:
+    name: Build and publish release
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Check that the tag matches the build version
+        shell: pwsh
+        run: |
+          $version = ([xml](Get-Content Directory.Build.props)).Project.PropertyGroup.Version
+          $tag = '${{ github.ref_name }}'
+          if ($tag -ne "v$version") { throw "Tag '$tag' does not match <Version>$version</Version> in Directory.Build.props." }
+          "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Restore
+        run: dotnet restore ConstantProxy.sln
+
+      - name: Build (Release)
+        run: dotnet build ConstantProxy.sln -c Release --no-restore -p:ContinuousIntegrationBuild=true -p:SourceRevisionId=${{ github.sha }}
+
+      - name: Unit tests
+        run: dotnet test tests/ConstantProxy.Tests -c Release --no-build
+
+      - name: Publish (self-contained, single file, win-x64)
+        run: >
+          dotnet publish src/ConstantProxy.App -c Release -r win-x64 --self-contained true
+          -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtraction=true
+          -p:EnableCompressionInSingleFile=true -p:DebugType=none
+          -p:ContinuousIntegrationBuild=true -p:SourceRevisionId=${{ github.sha }}
+          -o publish
+
+      - name: Smoke test the published executable
+        shell: pwsh
+        run: |
+          $lone = Join-Path $env:RUNNER_TEMP 'lone'
+          New-Item -ItemType Directory -Force -Path $lone | Out-Null
+          Copy-Item publish\constantproxy.exe $lone
+          $out = Join-Path $env:RUNNER_TEMP 'version.txt'
+          Start-Process -FilePath (Join-Path $lone 'constantproxy.exe') -ArgumentList '--version' -RedirectStandardOutput $out -Wait -NoNewWindow
+          $text = (Get-Content $out -Raw).Trim()
+          Write-Host "constantproxy printed: $text"
+          if ($text -ne "constantproxy $env:VERSION") { throw "Unexpected version output '$text' (expected 'constantproxy $env:VERSION')" }
+
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist, stage | Out-Null
+          Copy-Item publish\* stage -Recurse
+          Copy-Item README.md, LICENSE, CHANGELOG.md stage
+          Compress-Archive -Path stage\* -DestinationPath "dist\constantproxy-$env:VERSION-win-x64.zip" -CompressionLevel Optimal
+          Copy-Item publish\constantproxy.exe "dist\constantproxy-$env:VERSION-win-x64.exe"
+
+      - name: SHA-256 checksums
+        shell: pwsh
+        run: |
+          Push-Location dist
+          $lines = Get-ChildItem -File | Where-Object { $_.Name -ne 'SHA256SUMS.txt' } | Sort-Object Name | ForEach-Object {
+            $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLowerInvariant()
+            "$hash  $($_.Name)"
+          }
+          # Same layout as `sha256sum`, so `sha256sum -c SHA256SUMS.txt` verifies the files.
+          [System.IO.File]::WriteAllText((Join-Path (Get-Location) 'SHA256SUMS.txt'), (($lines -join "`n") + "`n"))
+          Get-Content SHA256SUMS.txt
+          Pop-Location
+
+      - name: Release notes from the changelog
+        shell: pwsh
+        run: |
+          $text = Get-Content CHANGELOG.md -Raw
+          $pattern = "(?ms)^## \[$([regex]::Escape($env:VERSION))\][^\r\n]*\r?\n(.*?)(?=^## \[|\z)"
+          $m = [regex]::Match($text, $pattern)
+          if (-not $m.Success) { throw "CHANGELOG.md has no section for version $env:VERSION." }
+          $notes = $m.Groups[1].Value.Trim()
+          $notes += "`n`nVerify your download: compare its SHA-256 with the value in SHA256SUMS.txt.`n"
+          Set-Content -Path release-notes.md -Value $notes -Encoding utf8
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: constantproxy-${{ env.VERSION }}-win-x64
+          path: dist
+
+      - name: Create the GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $flags = @()
+          # Versions below 1.0.0 are development releases.
+          if ([version]$env:VERSION -lt [version]'1.0.0') { $flags += '--prerelease' }
+          gh release create "${{ github.ref_name }}" (Get-ChildItem dist -File | ForEach-Object { $_.FullName }) `
+            --title "constantproxy $env:VERSION" --notes-file release-notes.md --verify-tag @flags

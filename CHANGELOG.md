@@ -4,6 +4,24 @@ All notable changes to constantproxy are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.0] - 2026-10-01
+
+Release candidate (feature freeze): stability, packaging and documentation.
+
+### Added
+- Configuration migration: files without a version or from older versions are upgraded (the previous file is kept as a backup); files from newer versions are loaded as far as understood with a warning and a backup.
+- Crash handling: unhandled exceptions are logged and written to `logs/crash-*.txt` (version, platform, exception; no configuration); UI-thread errors no longer take the tunnel down.
+- Conservative orphan cleanup: ssh processes started by constantproxy are recorded (PID, start time, name) and a later run ends only those that still match exactly.
+- Randomised lifecycle stress tests asserting that two ssh processes are never alive at once.
+- GitHub Actions: `build.yml` (Windows build, tests, packaging dry run with executable smoke test; Linux test job) and `release.yml` (tag build, version/tag check, self-contained single-file win-x64 publish, ZIP and standalone exe, SHA-256 sums, release notes from this changelog).
+- Documentation: README, architecture, configuration, development and release guides.
+- `global.json` pinning the SDK band.
+- Log tab filter (Everything / SSH output / Application): OpenSSH's stderr diagnostics are now always logged, so the reason for a failed connection is visible without verbose logging.
+
+### Fixed
+- The derived `activeProfile` object was written into `config.json`, duplicating the profile; only `activeProfileId` is stored now.
+- The IPv4-only setting is stored as `ipv4Only` (was `iPv4Only`); property names are matched case-insensitively when loading.
+
 ## [0.8.0] - 2026-10-01
 
 ### Added
