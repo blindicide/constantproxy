@@ -6,9 +6,9 @@ using ConstantProxy.Core.Models;
 namespace ConstantProxy.App;
 
 /// <summary>User-visible tray strings; supplied by the localization layer (SPEC §29).</summary>
-public sealed record TrayTexts(string Open, string Connect, string Disconnect, string Reconnect, string Settings, string Exit);
+public sealed record TrayTexts(string Open, string Connect, string Disconnect, string Reconnect, string Profile, string Settings, string Exit);
 
-public sealed record TrayActions(Action Open, Action Connect, Action Disconnect, Action Reconnect, Action Settings, Action Exit);
+public sealed record TrayActions(Action Open, Action Connect, Action Disconnect, Action Reconnect, Action<Guid> SelectProfile, Action Settings, Action Exit);
 
 /// <summary>
 /// The notification-area icon and its menu (SPEC §31). It only reflects state and forwards user choices to
@@ -21,6 +21,8 @@ public sealed class TrayController : IDisposable
     private readonly ToolStripMenuItem open;
     private readonly ToolStripMenuItem settingsItem;
     private readonly ToolStripMenuItem exitItem;
+    private readonly ToolStripMenuItem profileMenu;
+    private readonly Action<Guid> selectProfile;
     private readonly ToolStripMenuItem connect;
     private readonly ToolStripMenuItem disconnect;
     private readonly ToolStripMenuItem reconnect;
@@ -36,12 +38,14 @@ public sealed class TrayController : IDisposable
         disconnect.Click += (_, _) => actions.Disconnect();
         reconnect = new ToolStripMenuItem(texts.Reconnect);
         reconnect.Click += (_, _) => actions.Reconnect();
+        selectProfile = actions.SelectProfile;
+        profileMenu = new ToolStripMenuItem(texts.Profile);
         settingsItem = new ToolStripMenuItem(texts.Settings);
         settingsItem.Click += (_, _) => actions.Settings();
         exitItem = new ToolStripMenuItem(texts.Exit);
         exitItem.Click += (_, _) => actions.Exit();
 
-        menu.Items.AddRange(new ToolStripItem[] { open, new ToolStripSeparator(), connect, disconnect, reconnect, new ToolStripSeparator(), settingsItem, new ToolStripSeparator(), exitItem });
+        menu.Items.AddRange(new ToolStripItem[] { open, new ToolStripSeparator(), connect, disconnect, reconnect, new ToolStripSeparator(), profileMenu, settingsItem, new ToolStripSeparator(), exitItem });
 
         icon = new NotifyIcon
         {
@@ -61,6 +65,7 @@ public sealed class TrayController : IDisposable
         connect.Text = texts.Connect;
         disconnect.Text = texts.Disconnect;
         reconnect.Text = texts.Reconnect;
+        profileMenu.Text = texts.Profile;
         settingsItem.Text = texts.Settings;
         exitItem.Text = texts.Exit;
     }
@@ -72,8 +77,22 @@ public sealed class TrayController : IDisposable
         connect.Enabled = model.CanConnect;
         disconnect.Enabled = model.CanDisconnect;
         reconnect.Enabled = model.CanReconnect;
+        profileMenu.Enabled = model.CanSwitchProfile;
         icon.Icon = IconFor(model.Icon);
         icon.Text = TrayMenuState.FitTooltip(tooltip);
+    }
+
+    /// <summary>Rebuilds the "Profile" submenu with a check mark on the active profile.</summary>
+    public void SetProfiles(IReadOnlyList<(Guid Id, string Name)> profiles, Guid activeId)
+    {
+        profileMenu.DropDownItems.Clear();
+        foreach (var (id, name) in profiles)
+        {
+            var item = new ToolStripMenuItem(name.Replace("&", "&&")) { Checked = id == activeId };
+            var captured = id;
+            item.Click += (_, _) => selectProfile(captured);
+            profileMenu.DropDownItems.Add(item);
+        }
     }
 
     public void ShowBalloon(string title, string text, ToolTipIcon kind)

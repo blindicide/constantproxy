@@ -27,6 +27,22 @@
             <Button Content="{loc:Loc button.reconnect}" Command="{Binding ReconnectCommand}" />
         </StackPanel>
 
+        <Grid DockPanel.Dock="Top" Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <Label Content="{loc:Loc label.profile}" Target="{Binding ElementName=ProfileBox}" Padding="0,0,8,0" VerticalAlignment="Center" />
+            <ComboBox x:Name="ProfileBox" Grid.Column="1" ItemsSource="{Binding ProfileOptions}" SelectedValuePath="Value" DisplayMemberPath="Label"
+                      SelectedValue="{Binding SelectedProfileId}" IsEnabled="{Binding CanEditProfiles}" ToolTip="{loc:Loc tooltip.profileLocked}" />
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="8,0,0,0">
+                <Button Content="{loc:Loc button.newProfile}" Command="{Binding NewProfileCommand}" ToolTip="{loc:Loc tooltip.newProfile}" MinWidth="0" Padding="10,3" Margin="0,0,4,0" />
+                <Button Content="{loc:Loc button.cloneProfile}" Command="{Binding CloneProfileCommand}" ToolTip="{loc:Loc tooltip.cloneProfile}" MinWidth="0" Padding="10,3" Margin="0,0,4,0" />
+                <Button Content="{loc:Loc button.deleteProfile}" Command="{Binding DeleteProfileCommand}" ToolTip="{loc:Loc tooltip.deleteProfile}" MinWidth="0" Padding="10,3" Margin="0" />
+            </StackPanel>
+        </Grid>
+
         <TabControl x:Name="MainTabs" SelectionChanged="OnTabChanged">
             <TabItem Header="{loc:Loc tab.overview}">
         <ScrollViewer VerticalScrollBarVisibility="Auto">
@@ -101,6 +117,8 @@
                         <Label Content="{loc:Loc label.language}" Target="{Binding ElementName=LanguageBox}" Padding="0" />
                         <ComboBox x:Name="LanguageBox" ItemsSource="{Binding LanguageOptions}" SelectedValuePath="Value" DisplayMemberPath="Label"
                                   SelectedValue="{Binding LanguageSetting}" HorizontalAlignment="Left" MinWidth="220" Margin="0,2,0,8" />
+                        <Label Content="{loc:Loc label.profileName}" Target="{Binding ElementName=ProfileNameBox}" Padding="0" />
+                        <TextBox x:Name="ProfileNameBox" Text="{Binding ProfileName, UpdateSourceTrigger=PropertyChanged}" MaxLength="64" />
                         <Label Content="{loc:Loc label.sshTarget}" Target="{Binding ElementName=HostBox}" Padding="0" />
                         <TextBox x:Name="HostBox" Text="{Binding Host, UpdateSourceTrigger=PropertyChanged}" />
                         <Grid>
@@ -164,6 +182,7 @@
                         <TextBox x:Name="OutageBox" Text="{Binding MinimumOutageSeconds, UpdateSourceTrigger=PropertyChanged}" Width="90" HorizontalAlignment="Left" />
                         <Button Content="{loc:Loc button.save}" Command="{Binding SaveCommand}" HorizontalAlignment="Left" Margin="0,4,0,6" />
                         <TextBlock Text="{Binding ValidationText}" Foreground="Firebrick" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding SettingsNote}" TextWrapping="Wrap" Opacity="0.8" Margin="0,2,0,0" />
                     </StackPanel>
                 </Expander>
             </StackPanel>

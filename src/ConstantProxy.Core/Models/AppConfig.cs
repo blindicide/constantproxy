@@ -101,6 +101,14 @@ public sealed class AppConfig
             }
         }
 
+        // Ids must be unique: a hand-edited or copied file could otherwise make two profiles indistinguishable.
+        var seen = new HashSet<Guid>();
+        foreach (var p in Profiles.Where(p => !seen.Add(p.Id)))
+        {
+            p.Id = Guid.NewGuid();
+            seen.Add(p.Id);
+        }
+
         if (Profiles.Count == 0)
         {
             Profiles.Add(new Profile());

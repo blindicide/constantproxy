@@ -352,6 +352,21 @@ public sealed class SqliteAnalyticsStore : IAnalyticsStore
         return Convert.ToInt32(command.ExecuteScalar(), CultureInfo.InvariantCulture);
     }
 
+    public IReadOnlyDictionary<Guid, string> GetProfileNames()
+    {
+        using var connection = Connect();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT id, name FROM profiles";
+        var result = new Dictionary<Guid, string>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            result[Guid.Parse(reader.GetString(0))] = reader.GetString(1);
+        }
+
+        return result;
+    }
+
     private void Initialize(IReadOnlyList<Migration> migrations, bool existedBefore)
     {
         using var connection = Connect();

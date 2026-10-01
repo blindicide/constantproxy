@@ -43,6 +43,9 @@ public interface IAnalyticsStore
     TrafficTotals GetTrafficTotals(Guid? profileId, DateTimeOffset from, DateTimeOffset to);
 
     int GetEventCount(Guid? profileId, string type, DateTimeOffset from, DateTimeOffset to);
+
+    /// <summary>Last known name of every profile that has history (kept after a profile is deleted).</summary>
+    IReadOnlyDictionary<Guid, string> GetProfileNames();
 }
 
 public sealed record PruneResult(int Sessions, int TrafficMinutes, int Events, int HealthChecks);

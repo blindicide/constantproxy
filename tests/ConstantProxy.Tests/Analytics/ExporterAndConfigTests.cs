@@ -10,6 +10,7 @@ public class AnalyticsExporterTests
     private static SqliteAnalyticsStore Seeded(TempDir dir)
     {
         var store = SqliteAnalyticsStore.Open(dir.File("a.db")).Store;
+        store.UpsertProfile(ProfileId, "Home, \"main\"", T0);
         var id = store.StartSession(ProfileId, T0);
         store.EndSession(id, new SessionProgress(3000, 2, 1, 4, 1000, 5000, 20.5, 90.25, 10, 50), T0.AddHours(1), SessionEndReason.User);
         store.AddTrafficMinutes(new[] { new TrafficMinute(id, T0, 100, 200, 5, 9, 3, 1, 60, 2, 40) });
@@ -26,8 +27,8 @@ public class AnalyticsExporterTests
         Assert.Equal(new[] { "constantproxy-sessions.csv", "constantproxy-traffic.csv", "constantproxy-connection-events.csv" }, files.Select(Path.GetFileName));
         var sessions = File.ReadAllLines(files[0]);
         Assert.Equal(2, sessions.Length);
-        Assert.StartsWith("﻿session_id,profile_id,start_utc,end_utc,end_reason,duration_seconds,connected_seconds,disconnected_seconds", sessions[0]);
-        Assert.Contains("2026-06-01T12:00:00.000Z,2026-06-01T13:00:00.000Z,User,3600,3000,600,2,1,4,1000,5000,10,50,20.5,90.25", sessions[1]);
+        Assert.StartsWith("﻿session_id,profile_id,profile_name,start_utc,end_utc,end_reason,duration_seconds,connected_seconds,disconnected_seconds", sessions[0]);
+        Assert.Contains("\"Home, \"\"main\"\"\",2026-06-01T12:00:00.000Z,2026-06-01T13:00:00.000Z,User,3600,3000,600,2,1,4,1000,5000,10,50,20.5,90.25", sessions[1]);
 
         var traffic = File.ReadAllLines(files[1]);
         Assert.Equal("1,2026-06-01T12:00:00.000Z,100,200,5,9,3,1,30,40", traffic[1]);
@@ -55,6 +56,7 @@ public class AnalyticsExporterTests
         Assert.Equal(1000, session.GetProperty("uploadedBytes").GetInt64());
         Assert.Equal("user", session.GetProperty("endReason").GetString());
         Assert.Equal(ProfileId, session.GetProperty("profileId").GetGuid());
+        Assert.Equal("Home, \"main\"", session.GetProperty("profileName").GetString());
         Assert.False(File.ReadAllBytes(files[0]).Take(3).SequenceEqual(new byte[] { 0xEF, 0xBB, 0xBF })); // no BOM for JSON
     }
 
@@ -77,8 +79,8 @@ public class AnalyticsExporterTests
         store.StartSession(ProfileId, T0);
         var csv = AnalyticsExporter.SessionsCsv(store.GetSessions(null, T0.AddDays(-1), T0.AddDays(1)));
         var row = csv.Split("\r\n")[1].Split(',');
-        Assert.Equal(string.Empty, row[3]); // end_utc
-        Assert.Equal(string.Empty, row[5]); // duration
+        Assert.Equal(string.Empty, row[4]); // end_utc
+        Assert.Equal(string.Empty, row[6]); // duration
     }
 
     [Fact]

@@ -31,6 +31,8 @@ public sealed class MainViewModel : ObservableObject
     private readonly AppConfig config;
     private readonly AppLog log;
     private readonly LocalizationService loc;
+    private readonly ProfileRepository profiles;
+    private readonly IConfirmDialog confirm;
     private readonly Dispatcher dispatcher;
     private readonly DispatcherTimer timer;
 
@@ -44,18 +46,21 @@ public sealed class MainViewModel : ObservableObject
     private string languageSetting;
     private bool closing;
 
-    private string host;
-    private string bindAddress;
-    private string port;
-    private string sshExecutable;
+    private string profileName = string.Empty;
+    private string settingsNote = string.Empty;
+    private IReadOnlyList<LocalizedOption<Guid>> profileOptions = Array.Empty<LocalizedOption<Guid>>();
+    private string host = string.Empty;
+    private string bindAddress = string.Empty;
+    private string port = string.Empty;
+    private string sshExecutable = string.Empty;
     private bool ipv4Only;
-    private string serverAliveInterval;
-    private string serverAliveCountMax;
-    private string additionalArguments;
+    private string serverAliveInterval = string.Empty;
+    private string serverAliveCountMax = string.Empty;
+    private string additionalArguments = string.Empty;
     private bool autoReconnect;
     private bool healthEnabled;
-    private string healthHost;
-    private string healthPort;
+    private string healthHost = string.Empty;
+    private string healthPort = string.Empty;
     private bool measureTraffic;
     private bool startMinimized;
     private bool closeToTray;
@@ -75,33 +80,22 @@ public sealed class MainViewModel : ObservableObject
     private string averageText = string.Empty;
     private IReadOnlyList<LocalizedOption<string>> languageOptions = Array.Empty<LocalizedOption<string>>();
 
-    public MainViewModel(ConnectionManager manager, TrafficSamplingService traffic, AnalyticsRecorder? recorder, StatisticsViewModel statistics, StartupManager? startup, LocalizationService loc, ConfigurationService configuration, AppConfig config, AppLog log, Dispatcher dispatcher)
+    public MainViewModel(ConnectionManager manager, TrafficSamplingService traffic, AnalyticsRecorder? recorder, StatisticsViewModel statistics, StartupManager? startup, LocalizationService loc, IConfirmDialog confirm, ConfigurationService configuration, AppConfig config, AppLog log, Dispatcher dispatcher)
     {
         this.manager = manager;
         this.traffic = traffic;
         this.recorder = recorder;
         this.startup = startup;
         this.loc = loc;
+        this.confirm = confirm;
         Statistics = statistics;
         this.configuration = configuration;
         this.config = config;
         this.log = log;
         this.dispatcher = dispatcher;
 
-        var p = config.ActiveProfile;
-        host = p.Host;
-        bindAddress = p.BindAddress;
-        port = p.Port.ToString(CultureInfo.InvariantCulture);
-        sshExecutable = p.SshExecutable;
-        ipv4Only = p.IPv4Only;
-        serverAliveInterval = p.ServerAliveInterval.ToString(CultureInfo.InvariantCulture);
-        serverAliveCountMax = p.ServerAliveCountMax.ToString(CultureInfo.InvariantCulture);
-        additionalArguments = CommandLineSplitter.Join(p.AdditionalArguments);
-        autoReconnect = p.Reconnect.Enabled;
-        healthEnabled = p.Monitoring.Enabled;
-        healthHost = p.Monitoring.TargetHost;
-        healthPort = p.Monitoring.TargetPort.ToString(CultureInfo.InvariantCulture);
-        measureTraffic = p.TrafficMode == TrafficMode.Bridge;
+        profiles = new ProfileRepository(config);
+        LoadEditor(profiles.Active);
         startMinimized = config.Interface.StartMinimized;
         closeToTray = config.Interface.CloseToTray;
         minimizeToTray = config.Interface.MinimizeToTray;
@@ -114,7 +108,11 @@ public sealed class MainViewModel : ObservableObject
         languageOptions = BuildLanguageOptions();
         downloadRateText = uploadRateText = downloadTotalText = uploadTotalText = loc.Get("traffic.unavailable");
         latencyText = loc.Get("stats.none");
+        profileOptions = BuildProfileOptions();
 
+        NewProfileCommand = new RelayCommand(() => { AddProfile(); return Task.CompletedTask; }, () => CanEditProfiles);
+        CloneProfileCommand = new RelayCommand(() => { CloneProfile(); return Task.CompletedTask; }, () => CanEditProfiles);
+        DeleteProfileCommand = new RelayCommand(() => { DeleteProfile(); return Task.CompletedTask; }, () => CanEditProfiles && profiles.Profiles.Count > 1);
         ConnectCommand = new RelayCommand(ConnectAsync, () => State is ConnectionState.Disconnected or ConnectionState.Failed);
         DisconnectCommand = new RelayCommand(manager.DisconnectAsync, () => State != ConnectionState.Disconnected);
         ReconnectCommand = new RelayCommand(async () => { await manager.ReconnectNowAsync(); }, () => State is ConnectionState.Connecting or ConnectionState.Connected or ConnectionState.Degraded or ConnectionState.Reconnecting);
@@ -135,6 +133,12 @@ public sealed class MainViewModel : ObservableObject
 
     public StatisticsViewModel Statistics { get; }
 
+    public RelayCommand NewProfileCommand { get; }
+
+    public RelayCommand CloneProfileCommand { get; }
+
+    public RelayCommand DeleteProfileCommand { get; }
+
     public RelayCommand ConnectCommand { get; }
 
     public RelayCommand DisconnectCommand { get; }
@@ -154,6 +158,10 @@ public sealed class MainViewModel : ObservableObject
                 OnPropertyChanged(nameof(StateBrush));
                 OnPropertyChanged(nameof(StateGlyph));
                 OnPropertyChanged(nameof(Endpoint));
+                OnPropertyChanged(nameof(CanEditProfiles));
+                NewProfileCommand.RaiseCanExecuteChanged();
+                CloneProfileCommand.RaiseCanExecuteChanged();
+                DeleteProfileCommand.RaiseCanExecuteChanged();
                 ConnectCommand.RaiseCanExecuteChanged();
                 DisconnectCommand.RaiseCanExecuteChanged();
                 ReconnectCommand.RaiseCanExecuteChanged();
@@ -263,6 +271,35 @@ public sealed class MainViewModel : ObservableObject
     public string MinimumOutageSeconds { get => minimumOutageSeconds; set => SetProperty(ref minimumOutageSeconds, value); }
 
     public AppConfig Config => config;
+
+    public IReadOnlyList<Profile> Profiles => profiles.Profiles;
+
+    public Profile ActiveProfile => profiles.Active;
+
+    /// <summary>Profiles can only be switched, added or removed while no tunnel is running (SPEC §64).</summary>
+    public bool CanEditProfiles => State is ConnectionState.Disconnected or ConnectionState.Failed;
+
+    public IReadOnlyList<LocalizedOption<Guid>> ProfileOptions { get => profileOptions; private set => SetProperty(ref profileOptions, value); }
+
+    public string ProfileName { get => profileName; set => SetProperty(ref profileName, value); }
+
+    /// <summary>Informational line under the settings (for example: changes apply on the next connect).</summary>
+    public string SettingsNote { get => settingsNote; private set => SetProperty(ref settingsNote, value); }
+
+    public Guid SelectedProfileId
+    {
+        get => profiles.Active.Id;
+        set
+        {
+            if (value != Guid.Empty && value != profiles.Active.Id)
+            {
+                SwitchProfile(value);
+            }
+        }
+    }
+
+    /// <summary>Raised on the UI thread after profiles were added, removed, renamed or the selection changed.</summary>
+    public event Action? ProfilesChanged;
 
     public IReadOnlyList<LocalizedOption<string>> LanguageOptions { get => languageOptions; private set => SetProperty(ref languageOptions, value); }
 
@@ -388,13 +425,18 @@ public sealed class MainViewModel : ObservableObject
             return;
         }
 
-        await manager.ConnectAsync(config.ActiveProfile);
+        await manager.ConnectAsync(profiles.Active);
     }
 
-    /// <summary>Copies the edited fields into the profile, validates, and persists. Returns false when invalid.</summary>
-    private bool ApplyAndSave()
+    private bool ApplyAndSave() => ApplyEditor(strict: true);
+
+    /// <summary>
+    /// Copies the edited fields into the active profile and persists. A strict apply (Save, Connect) refuses invalid
+    /// input and reports why; a lenient one (switching profiles) keeps whatever parses so no typing is ever lost.
+    /// </summary>
+    private bool ApplyEditor(bool strict)
     {
-        var p = config.ActiveProfile;
+        var p = profiles.Active;
         var errors = new List<string>();
 
         if (!int.TryParse(Port, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedPort))
@@ -421,7 +463,11 @@ public sealed class MainViewModel : ObservableObject
             healthPortValue = p.Monitoring.TargetPort;
         }
 
+        var nameCheck = profiles.ValidateName(ProfileName, p);
+        errors.AddRange(nameCheck.Errors.Select(i => LocalizedText.Issue(loc, i)));
+
         var candidate = p.Clone();
+        candidate.Name = nameCheck.IsValid ? ProfileName.Trim() : p.Name;
         candidate.Host = Host.Trim();
         candidate.BindAddress = BindAddress.Trim();
         candidate.Port = parsedPort;
@@ -462,12 +508,31 @@ public sealed class MainViewModel : ObservableObject
             builder.AppendLine(loc.Format("settings.warning", LocalizedText.Issue(loc, warning)));
         }
 
-        ValidationText = builder.ToString().TrimEnd();
-        if (errors.Count > 0)
+        ValidationText = strict ? builder.ToString().TrimEnd() : string.Empty;
+        if (strict && errors.Count > 0)
         {
             return false;
         }
 
+        if (strict)
+        {
+            ApplyGlobalSettings(outageSeconds);
+        }
+
+        var index = config.Profiles.FindIndex(x => x.Id == p.Id);
+        config.Profiles[index] = candidate;
+        SettingsNote = strict && !CanEditProfiles ? loc.Get("settings.appliesNextConnect") : string.Empty;
+        SaveConfiguration();
+        if (!string.Equals(p.Name, candidate.Name, StringComparison.Ordinal))
+        {
+            NotifyProfilesChanged();
+        }
+
+        return true;
+    }
+
+    private void ApplyGlobalSettings(int outageSeconds)
+    {
         config.Interface.StartMinimized = StartMinimized;
         config.Interface.CloseToTray = CloseToTray;
         config.Interface.MinimizeToTray = MinimizeToTray;
@@ -477,9 +542,10 @@ public sealed class MainViewModel : ObservableObject
         config.Notifications.NotifyOnRecovery = NotifyOnRecovery;
         config.Notifications.MinimumOutageSeconds = outageSeconds;
         ApplyStartupRegistration();
+    }
 
-        var index = config.Profiles.FindIndex(x => x.Id == p.Id);
-        config.Profiles[index] = candidate;
+    private void SaveConfiguration()
+    {
         try
         {
             configuration.Save(config);
@@ -489,8 +555,116 @@ public sealed class MainViewModel : ObservableObject
             log.Error("config", "Could not save the configuration.", ex);
             ValidationText += (ValidationText.Length > 0 ? Environment.NewLine : string.Empty) + loc.Format("dialog.saveFailed", ex.Message);
         }
+    }
 
-        return true;
+    // ---- profiles (SPEC §7, §48) ----
+
+    private void LoadEditor(Profile p)
+    {
+        profileName = p.Name;
+        host = p.Host;
+        bindAddress = p.BindAddress;
+        port = p.Port.ToString(CultureInfo.InvariantCulture);
+        sshExecutable = p.SshExecutable;
+        ipv4Only = p.IPv4Only;
+        serverAliveInterval = p.ServerAliveInterval.ToString(CultureInfo.InvariantCulture);
+        serverAliveCountMax = p.ServerAliveCountMax.ToString(CultureInfo.InvariantCulture);
+        additionalArguments = CommandLineSplitter.Join(p.AdditionalArguments);
+        autoReconnect = p.Reconnect.Enabled;
+        healthEnabled = p.Monitoring.Enabled;
+        healthHost = p.Monitoring.TargetHost;
+        healthPort = p.Monitoring.TargetPort.ToString(CultureInfo.InvariantCulture);
+        measureTraffic = p.TrafficMode == TrafficMode.Bridge;
+        OnPropertyChanged(string.Empty);
+    }
+
+    private IReadOnlyList<LocalizedOption<Guid>> BuildProfileOptions() =>
+        profiles.Profiles.Select(p => new LocalizedOption<Guid>(p.Id, p.Name)).ToArray();
+
+    private void NotifyProfilesChanged()
+    {
+        ProfileOptions = BuildProfileOptions();
+        OnPropertyChanged(nameof(SelectedProfileId));
+        OnPropertyChanged(nameof(Endpoint));
+        DeleteProfileCommand.RaiseCanExecuteChanged();
+        Statistics.OnProfileChanged();
+        ProfilesChanged?.Invoke();
+    }
+
+    private void SwitchProfile(Guid id)
+    {
+        if (!CanEditProfiles)
+        {
+            SettingsNote = loc.Get("tooltip.profileLocked");
+            OnPropertyChanged(nameof(SelectedProfileId)); // snap the selector back
+            return;
+        }
+
+        ApplyEditor(strict: false);
+        try
+        {
+            profiles.SetActive(id);
+        }
+        catch (ProfileException ex)
+        {
+            ValidationText = LocalizedText.Issue(loc, new ValidationIssue(IssueSeverity.Error, nameof(Profile), ex.Code, ex.Message));
+            return;
+        }
+
+        LoadEditor(profiles.Active);
+        ValidationText = string.Empty;
+        SettingsNote = string.Empty;
+        SaveConfiguration();
+        NotifyProfilesChanged();
+    }
+
+    /// <summary>Selects a profile from the tray menu.</summary>
+    public void SelectProfileFromTray(Guid id) => SwitchProfile(id);
+
+    private void AddProfile()
+    {
+        ApplyEditor(strict: false);
+        var created = profiles.Add(null, loc.Get("profile.defaultName"));
+        profiles.SetActive(created.Id);
+        LoadEditor(created);
+        ValidationText = string.Empty;
+        SaveConfiguration();
+        NotifyProfilesChanged();
+    }
+
+    private void CloneProfile()
+    {
+        ApplyEditor(strict: false);
+        var copy = profiles.Clone(profiles.Active.Id, loc.Get("profile.copyName"));
+        profiles.SetActive(copy.Id);
+        LoadEditor(copy);
+        ValidationText = string.Empty;
+        SaveConfiguration();
+        NotifyProfilesChanged();
+    }
+
+    private void DeleteProfile()
+    {
+        var doomed = profiles.Active;
+        if (!confirm.Confirm(loc.Format("dialog.deleteProfile", doomed.Name)))
+        {
+            return;
+        }
+
+        try
+        {
+            profiles.Delete(doomed.Id);
+        }
+        catch (ProfileException ex)
+        {
+            ValidationText = LocalizedText.Issue(loc, new ValidationIssue(IssueSeverity.Error, nameof(Profile), ex.Code, ex.Message));
+            return;
+        }
+
+        LoadEditor(profiles.Active);
+        ValidationText = string.Empty;
+        SaveConfiguration();
+        NotifyProfilesChanged();
     }
 
     private void ApplyStartupRegistration()

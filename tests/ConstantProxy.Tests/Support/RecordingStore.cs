@@ -164,4 +164,6 @@ public sealed class RecordingStore : IAnalyticsStore
     public TrafficTotals GetTrafficTotals(Guid? profileId, DateTimeOffset from, DateTimeOffset to) => throw new NotSupportedException();
 
     public int GetEventCount(Guid? profileId, string type, DateTimeOffset from, DateTimeOffset to) => throw new NotSupportedException();
+
+    public IReadOnlyDictionary<Guid, string> GetProfileNames() => throw new NotSupportedException();
 }
