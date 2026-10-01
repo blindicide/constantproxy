@@ -17,4 +17,20 @@ public class VersionInfoTests
 
     [Fact]
     public void RepositoryUrlComesFromBuildMetadata() => Assert.StartsWith("https://github.com/", VersionInfo.RepositoryUrl);
+
+    [Fact]
+    public void ReportedVersionIsTheOneDefinedInDirectoryBuildProps()
+    {
+        // The version is defined once (SPEC §41); About, diagnostics and --version must all show exactly that number.
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "Directory.Build.props")))
+        {
+            dir = dir.Parent;
+        }
+
+        Assert.NotNull(dir);
+        var props = System.Xml.Linq.XDocument.Load(Path.Combine(dir!.FullName, "Directory.Build.props"));
+        var declared = props.Descendants("Version").Single().Value;
+        Assert.Equal(declared, VersionInfo.Version);
+    }
 }

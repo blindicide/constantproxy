@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using System.Windows;
 using ConstantProxy.App.Services;
 using ConstantProxy.App.ViewModels;
@@ -33,9 +32,6 @@ public partial class App : Application
     private LocalizationService? loc;
     private bool exiting;
     private bool hintShown;
-
-    [DllImport("kernel32.dll")]
-    private static extern bool AttachConsole(int processId);
 
     /// <summary>True once the application is really shutting down (as opposed to hiding to the tray).</summary>
     public bool IsExiting => exiting;
@@ -129,8 +125,7 @@ public partial class App : Application
 
         if (e.Args.Contains("--version", StringComparer.OrdinalIgnoreCase))
         {
-            AttachConsole(-1); // write to the parent console when started from a terminal
-            Console.WriteLine($"{VersionInfo.ProductName} {VersionInfo.Version}");
+            ConsoleOutput.WriteLine($"{VersionInfo.ProductName} {VersionInfo.Version}");
             Shutdown(0);
             return;
         }
