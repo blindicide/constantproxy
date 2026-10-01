@@ -4,6 +4,17 @@ All notable changes to constantproxy are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.0] - 2026-10-01
+
+### Added
+- Notification-area icon with a context menu (Open, Connect, Disconnect, Reconnect, Settings, Exit) whose enabled items follow the connection state; per-state icons differ in shape as well as colour.
+- Optional hide-to-tray on close and on minimize; exiting is always explicit (tray menu).
+- Single-instance behaviour: launching constantproxy again brings the running instance to the front (acknowledged activation over a per-user named pipe).
+- "Start with Windows" (per-user Run key, only its own value is touched, self-repairs if the executable moves) and an independent "Connect automatically when constantproxy starts" setting; "Start minimized" setting.
+- Windows notifications with anti-spam: outages shorter than the configured minimum (default 10 s) stay silent, "restored" is only sent when the loss was announced and reports the downtime, intentional disconnects never notify.
+- Graceful shutdown on exit and when Windows ends the session; a Windows job object makes sure only the ssh processes constantproxy started are terminated if constantproxy itself dies.
+- Application icon (`assets/constantproxy.ico`, reproducible via `scripts/make_icon.py`).
+
 ## [0.4.0] - 2026-10-01
 
 ### Added

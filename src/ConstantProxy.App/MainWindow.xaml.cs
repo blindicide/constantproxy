@@ -7,8 +7,6 @@ namespace ConstantProxy.App;
 
 public partial class MainWindow : Window
 {
-    private bool shutdownDone;
-
     public MainWindow()
     {
         InitializeComponent();
@@ -25,18 +23,42 @@ public partial class MainWindow : Window
         viewModel.Statistics.SetActive(ReferenceEquals(MainTabs.SelectedItem, StatisticsTab));
     }
 
-    protected override async void OnClosing(CancelEventArgs e)
+    /// <summary>Opens the connection settings (used by the tray menu).</summary>
+    public void ShowSettings()
     {
-        if (shutdownDone || DataContext is not MainViewModel viewModel)
+        MainTabs.SelectedIndex = 0;
+        SettingsExpander.IsExpanded = true;
+        SettingsExpander.BringIntoView();
+    }
+
+    protected override void OnStateChanged(EventArgs e)
+    {
+        base.OnStateChanged(e);
+        if (WindowState == WindowState.Minimized
+            && Application.Current is App { IsExiting: false } app
+            && DataContext is MainViewModel viewModel
+            && viewModel.Config.Interface.MinimizeToTray)
+        {
+            app.HideToTray();
+        }
+    }
+
+    protected override void OnClosing(CancelEventArgs e)
+    {
+        if (Application.Current is not App app || app.IsExiting)
         {
             base.OnClosing(e);
             return;
         }
 
-        // Stop ssh (only our own child) before the window goes away; do not block the UI thread while waiting.
-        e.Cancel = true;
-        await viewModel.ShutdownAsync();
-        shutdownDone = true;
-        Close();
+        e.Cancel = true; // the window is only hidden unless the user chose to exit
+        if (DataContext is MainViewModel viewModel && viewModel.Config.Interface.CloseToTray)
+        {
+            app.HideToTray();
+        }
+        else
+        {
+            _ = app.RequestExitAsync();
+        }
     }
 }

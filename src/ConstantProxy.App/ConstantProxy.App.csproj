@@ -4,14 +4,25 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationIcon>..\..\assets\constantproxy.ico</ApplicationIcon>
     <RootNamespace>ConstantProxy.App</RootNamespace>
     <AssemblyName>constantproxy</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <!-- The manifest declares per-monitor DPI awareness for WPF; the WinForms-only advice does not apply. -->
+    <NoWarn>$(NoWarn);WFAC010</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
     <Using Include="System.IO" />
+    <!-- WinForms is only used for the notification-area icon; keep its types from colliding with WPF's. -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="..\..\assets\constantproxy.ico" Link="constantproxy.ico" />
   </ItemGroup>
 
   <ItemGroup>

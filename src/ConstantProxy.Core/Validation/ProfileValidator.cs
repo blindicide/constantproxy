@@ -184,4 +184,15 @@ public static class ProfileValidator
 
         return result;
     }
+
+    public static ValidationResult ValidateNotifications(NotificationConfig notifications)
+    {
+        var result = new ValidationResult();
+        if (notifications.MinimumOutageSeconds is < 0 or > 86400)
+        {
+            result.Error(nameof(AppConfig.Notifications), "notify.minoutage", "The minimum outage duration must be between 0 seconds and 24 hours.");
+        }
+
+        return result;
+    }
 }
