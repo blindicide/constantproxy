@@ -6,6 +6,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Localization\Strings.*.json" WithCulture="false" LogicalName="ConstantProxy.Core.Localization.%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
     <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
       <_Parameter1>RepositoryUrl</_Parameter1>
       <_Parameter2>$(RepositoryUrl)</_Parameter2>

@@ -10,6 +10,9 @@ public enum LogVerbosity
 /// <summary>Window and startup behaviour (SPEC §28 Interface, §31, §32).</summary>
 public sealed class InterfaceConfig
 {
+    /// <summary><c>auto</c> (follow the Windows UI language), <c>en</c> or <c>ru</c> (SPEC §30).</summary>
+    public string Language { get; set; } = "auto";
+
     public bool StartMinimized { get; set; }
 
     /// <summary>Closing the main window hides it to the notification area instead of exiting.</summary>
@@ -75,6 +78,7 @@ public sealed class AppConfig
     public AppConfig Normalize()
     {
         Interface ??= new InterfaceConfig();
+        Interface.Language = string.IsNullOrWhiteSpace(Interface.Language) ? "auto" : Interface.Language.Trim().ToLowerInvariant();
         Notifications ??= new NotificationConfig();
         Analytics ??= new AnalyticsConfig();
         Analytics.DatabasePath ??= string.Empty;

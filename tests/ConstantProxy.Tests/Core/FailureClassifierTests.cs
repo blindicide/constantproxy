@@ -49,7 +49,8 @@ public class FailureClassifierTests
         Assert.Equal(FailureCategory.Unknown, failure.Category);
         Assert.Equal("ssh.exited", failure.Code);
         Assert.True(failure.Retryable);
-        Assert.Contains("exit code 1", failure.Message);
+        Assert.Equal(1, failure.ExitCode);
+        Assert.DoesNotContain("1", failure.Message); // the code lives in ExitCode so the message can be localized as-is
     }
 
     [Fact]

@@ -4,6 +4,19 @@ All notable changes to constantproxy are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.0] - 2026-10-01
+
+### Added
+- Complete English and Russian localization (184 strings) in embedded JSON resource files covering buttons, labels, menus, tray, dialogs, errors, notifications, settings, tooltips, units and statistics; Russian plural rules for durations.
+- Language detection: Russian when the Windows UI language is Russian, English otherwise, with a manual Automatic / English / Русский override in the settings that takes effect immediately without a restart.
+- Localized failure messages by failure code (including the wording from the specification, for example "Порт 10080 уже используется.") with the technical details kept untranslated in the expandable Details section.
+- Locale-aware number formatting and unit labels (for example `1,50 КБ/с`).
+- Resource tests: every English key has a Russian counterpart, placeholders and access keys match, nothing is left untranslated, plural groups are complete, and every key referenced from C# or XAML, every failure code and every validation code exists.
+
+### Changed
+- All user-visible text moved out of views and view models into the resource files; the XAML uses a `{loc:Loc key}` markup extension that refreshes on language change.
+- Failure messages no longer embed the exit code; it is carried separately and shown in the Details section.
+
 ## [0.5.0] - 2026-10-01
 
 ### Added

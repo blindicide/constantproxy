@@ -18,6 +18,9 @@ public sealed class TrayController : IDisposable
 {
     private readonly NotifyIcon icon;
     private readonly Dictionary<TrayIconKind, Icon> icons = new();
+    private readonly ToolStripMenuItem open;
+    private readonly ToolStripMenuItem settingsItem;
+    private readonly ToolStripMenuItem exitItem;
     private readonly ToolStripMenuItem connect;
     private readonly ToolStripMenuItem disconnect;
     private readonly ToolStripMenuItem reconnect;
@@ -25,7 +28,7 @@ public sealed class TrayController : IDisposable
 
     public TrayController(TrayTexts texts, TrayActions actions)
     {
-        var open = new ToolStripMenuItem(texts.Open) { Font = new Font(SystemFonts.MenuFont ?? SystemFonts.DefaultFont, FontStyle.Bold) };
+        open = new ToolStripMenuItem(texts.Open) { Font = new Font(SystemFonts.MenuFont ?? SystemFonts.DefaultFont, FontStyle.Bold) };
         open.Click += (_, _) => actions.Open();
         connect = new ToolStripMenuItem(texts.Connect);
         connect.Click += (_, _) => actions.Connect();
@@ -33,12 +36,12 @@ public sealed class TrayController : IDisposable
         disconnect.Click += (_, _) => actions.Disconnect();
         reconnect = new ToolStripMenuItem(texts.Reconnect);
         reconnect.Click += (_, _) => actions.Reconnect();
-        var settings = new ToolStripMenuItem(texts.Settings);
-        settings.Click += (_, _) => actions.Settings();
-        var exit = new ToolStripMenuItem(texts.Exit);
-        exit.Click += (_, _) => actions.Exit();
+        settingsItem = new ToolStripMenuItem(texts.Settings);
+        settingsItem.Click += (_, _) => actions.Settings();
+        exitItem = new ToolStripMenuItem(texts.Exit);
+        exitItem.Click += (_, _) => actions.Exit();
 
-        menu.Items.AddRange(new ToolStripItem[] { open, new ToolStripSeparator(), connect, disconnect, reconnect, new ToolStripSeparator(), settings, new ToolStripSeparator(), exit });
+        menu.Items.AddRange(new ToolStripItem[] { open, new ToolStripSeparator(), connect, disconnect, reconnect, new ToolStripSeparator(), settingsItem, new ToolStripSeparator(), exitItem });
 
         icon = new NotifyIcon
         {
@@ -49,6 +52,17 @@ public sealed class TrayController : IDisposable
         };
         icon.DoubleClick += (_, _) => actions.Open();
         Update(ConnectionState.Disconnected, "constantproxy");
+    }
+
+    /// <summary>Re-labels the menu after a language change.</summary>
+    public void SetTexts(TrayTexts texts)
+    {
+        open.Text = texts.Open;
+        connect.Text = texts.Connect;
+        disconnect.Text = texts.Disconnect;
+        reconnect.Text = texts.Reconnect;
+        settingsItem.Text = texts.Settings;
+        exitItem.Text = texts.Exit;
     }
 
     /// <summary>Applies the menu state, icon and tooltip for <paramref name="state"/>.</summary>

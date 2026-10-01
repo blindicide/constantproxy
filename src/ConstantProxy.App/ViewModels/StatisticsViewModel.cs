@@ -1,13 +1,11 @@
-using System.Globalization;
 using System.Diagnostics;
 using System.Windows.Media;
 using System.Windows.Threading;
 using ConstantProxy.Core.Analytics;
 using ConstantProxy.Core.Connection;
+using ConstantProxy.Core.Localization;
 using ConstantProxy.Core.Logging;
 using ConstantProxy.Core.Models;
-using ConstantProxy.Core.Presentation;
-using ConstantProxy.Core.Traffic;
 using ConstantProxy.Infrastructure.Analytics;
 using ConstantProxy.Infrastructure.Config;
 using Microsoft.Data.Sqlite;
@@ -21,7 +19,7 @@ public enum HistoryMetric
     Availability,
 }
 
-public sealed record HistoryRange(string Label, TimeSpan Span);
+public sealed record HistoryRange(string Key, TimeSpan Span);
 
 /// <summary>Chooses where an export goes; implemented with WPF dialogs in the app and replaceable in tests.</summary>
 public interface IExportDialog
@@ -39,6 +37,7 @@ public sealed class StatisticsViewModel : ObservableObject
     private readonly ConnectionManager manager;
     private readonly IExportDialog exportDialog;
     private readonly IAppLog log;
+    private readonly LocalizationService loc;
     private readonly Dispatcher dispatcher;
     private readonly DispatcherTimer timer;
     private readonly AnalyticsSummaryService? summaryService;
@@ -50,26 +49,32 @@ public sealed class StatisticsViewModel : ObservableObject
     private IReadOnlyList<GraphSeries> series = Array.Empty<GraphSeries>();
     private bool active;
     private int refreshing;
+    private AnalyticsSummary? lastSummary;
+    private IReadOnlyList<LocalizedOption<HistoryRange>> rangeOptions;
+    private IReadOnlyList<LocalizedOption<HistoryMetric>> metricOptions;
 
-    public StatisticsViewModel(IAnalyticsStore? store, AppPaths paths, AppConfig config, ConnectionManager manager, IExportDialog exportDialog, IAppLog log, Dispatcher dispatcher)
+    public StatisticsViewModel(IAnalyticsStore? store, AppPaths paths, AppConfig config, ConnectionManager manager, IExportDialog exportDialog, LocalizationService loc, IAppLog log, Dispatcher dispatcher)
     {
         this.store = store;
         this.paths = paths;
         this.config = config;
         this.manager = manager;
         this.exportDialog = exportDialog;
+        this.loc = loc;
         this.log = log;
         this.dispatcher = dispatcher;
         summaryService = store is null ? null : new AnalyticsSummaryService(store);
 
         Ranges = new[]
         {
-            new HistoryRange("1 hour", TimeSpan.FromHours(1)),
-            new HistoryRange("24 hours", TimeSpan.FromHours(24)),
-            new HistoryRange("7 days", TimeSpan.FromDays(7)),
-            new HistoryRange("30 days", TimeSpan.FromDays(30)),
+            new HistoryRange("range.hour1", TimeSpan.FromHours(1)),
+            new HistoryRange("range.hours24", TimeSpan.FromHours(24)),
+            new HistoryRange("range.days7", TimeSpan.FromDays(7)),
+            new HistoryRange("range.days30", TimeSpan.FromDays(30)),
         };
         range = Ranges[1];
+        rangeOptions = BuildRangeOptions();
+        metricOptions = BuildMetricOptions();
 
         RefreshCommand = new RelayCommand(RefreshAsync);
         ExportCommand = new RelayCommand(ExportAsync, () => store is not null);
@@ -77,12 +82,14 @@ public sealed class StatisticsViewModel : ObservableObject
 
         timer = new DispatcherTimer(DispatcherPriority.Background, dispatcher) { Interval = TimeSpan.FromSeconds(30) };
         timer.Tick += async (_, _) => await RefreshAsync();
-        SummaryText = store is null ? "History is turned off or the database could not be opened." : "Open this tab to load statistics.";
+        SummaryText = loc.Get(store is null ? "stats.disabled" : "stats.notLoaded");
     }
 
     public IReadOnlyList<HistoryRange> Ranges { get; }
 
-    public IReadOnlyList<HistoryMetric> Metrics { get; } = Enum.GetValues<HistoryMetric>();
+    public IReadOnlyList<LocalizedOption<HistoryRange>> RangeOptions { get => rangeOptions; private set => SetProperty(ref rangeOptions, value); }
+
+    public IReadOnlyList<LocalizedOption<HistoryMetric>> MetricOptions { get => metricOptions; private set => SetProperty(ref metricOptions, value); }
 
     public RelayCommand RefreshCommand { get; }
 
@@ -123,7 +130,7 @@ public sealed class StatisticsViewModel : ObservableObject
         get => range;
         set
         {
-            if (SetProperty(ref range, value))
+            if (value is not null && SetProperty(ref range, value))
             {
                 _ = RefreshAsync();
             }
@@ -163,7 +170,8 @@ public sealed class StatisticsViewModel : ObservableObject
             var (summary, history) = await Task.Run(() => Load(profileId, sessionStart, selectedMetric, selectedRange));
             await dispatcher.InvokeAsync(() =>
             {
-                SummaryText = FormatSummary(summary);
+                lastSummary = summary;
+                SummaryText = SummaryFormatter.Format(summary, loc);
                 Series = history;
                 StatusMessage = string.Empty;
             });
@@ -171,7 +179,7 @@ public sealed class StatisticsViewModel : ObservableObject
         catch (Exception ex) when (ex is SqliteException or IOException or UnauthorizedAccessException)
         {
             log.Error("analytics", "Could not load statistics.", ex);
-            StatusMessage = "Statistics could not be loaded: " + ex.Message;
+            StatusMessage = loc.Format("stats.loadFailed", ex.Message);
         }
         finally
         {
@@ -194,40 +202,42 @@ public sealed class StatisticsViewModel : ObservableObject
                 var minutes = store!.GetTrafficMinutes(profileId, from, to);
                 built = new[]
                 {
-                    new GraphSeries("Download", Brushes.SeaGreen, false, HistorySeries.Rate(minutes, from, to, bucket, HistorySeries.TrafficDirection.Download)),
-                    new GraphSeries("Upload", Brushes.DarkOrange, true, HistorySeries.Rate(minutes, from, to, bucket, HistorySeries.TrafficDirection.Upload)),
+                    new GraphSeries(loc.Get("graph.series.download"), Brushes.SeaGreen, false, HistorySeries.Rate(minutes, from, to, bucket, HistorySeries.TrafficDirection.Download)),
+                    new GraphSeries(loc.Get("graph.series.upload"), Brushes.DarkOrange, true, HistorySeries.Rate(minutes, from, to, bucket, HistorySeries.TrafficDirection.Upload)),
                 };
                 break;
             case HistoryMetric.Latency:
-                built = new[] { new GraphSeries("Latency", Brushes.SteelBlue, false, HistorySeries.Latency(store!.GetTrafficMinutes(profileId, from, to), from, to, bucket)) };
+                built = new[] { new GraphSeries(loc.Get("graph.series.latency"), Brushes.SteelBlue, false, HistorySeries.Latency(store!.GetTrafficMinutes(profileId, from, to), from, to, bucket)) };
                 break;
             default:
-                built = new[] { new GraphSeries("Availability", Brushes.SeaGreen, false, HistorySeries.Availability(store!.GetIntervals(profileId, from, to), from, to, bucket, now)) };
+                built = new[] { new GraphSeries(loc.Get("graph.series.availability"), Brushes.SeaGreen, false, HistorySeries.Availability(store!.GetIntervals(profileId, from, to), from, to, bucket, now)) };
                 break;
         }
 
         return (summary, built);
     }
 
-    private static string FormatSummary(AnalyticsSummary s)
-    {
-        var culture = CultureInfo.CurrentUICulture;
-        static string Pct(double? v) => v is { } p ? $"{p:0.00}%" : "-";
-        static string Traffic(TrafficTotals t, CultureInfo c) => $"↓ {TrafficFormatter.FormatBytes(t.DownloadBytes, c)}   ↑ {TrafficFormatter.FormatBytes(t.UploadBytes, c)}";
+    private IReadOnlyList<LocalizedOption<HistoryRange>> BuildRangeOptions() =>
+        Ranges.Select(r => new LocalizedOption<HistoryRange>(r, loc.Get(r.Key))).ToArray();
 
-        return string.Join(Environment.NewLine,
-            "Uptime",
-            $"  Session {Pct(s.UptimeSession)}   Today {Pct(s.UptimeToday)}   7 days {Pct(s.Uptime7Days)}   30 days {Pct(s.Uptime30Days)}",
-            string.Empty,
-            "Traffic",
-            $"  Today        {Traffic(s.TrafficToday, culture)}",
-            $"  This week    {Traffic(s.TrafficThisWeek, culture)}",
-            $"  This month   {Traffic(s.TrafficThisMonth, culture)}",
-            $"  Stored total {Traffic(s.TrafficAllTime, culture)}",
-            string.Empty,
-            "Connection",
-            $"  Sessions {s.SessionCount}   Runtime {DurationFormatter.Format(s.TotalRuntime)}   Connected {DurationFormatter.Format(s.TotalConnected)}",
-            $"  Reconnects {s.TotalReconnects}   Failures {s.TotalFailures}   Longest connection {DurationFormatter.Format(s.LongestContinuousConnection)}");
+    private IReadOnlyList<LocalizedOption<HistoryMetric>> BuildMetricOptions() =>
+        Enum.GetValues<HistoryMetric>().Select(m => new LocalizedOption<HistoryMetric>(m, loc.Get($"metric.{m}"))).ToArray();
+
+    /// <summary>Re-renders text and graph legends in the new language.</summary>
+    public void OnLanguageChanged()
+    {
+        RangeOptions = BuildRangeOptions();
+        MetricOptions = BuildMetricOptions();
+        if (lastSummary is not null)
+        {
+            SummaryText = SummaryFormatter.Format(lastSummary, loc);
+        }
+        else
+        {
+            SummaryText = loc.Get(store is null ? "stats.disabled" : "stats.notLoaded");
+        }
+
+        _ = RefreshAsync();
     }
 
     private async Task ExportAsync()
@@ -245,12 +255,12 @@ public sealed class StatisticsViewModel : ObservableObject
         try
         {
             var files = await Task.Run(() => new AnalyticsExporter(store).Export(directory, format, profileId, DateTimeOffset.UnixEpoch, DateTimeOffset.UtcNow.AddDays(1), prefix));
-            StatusMessage = $"Exported {files.Count} files to {directory}";
+            StatusMessage = loc.Format("stats.exported", files.Count, directory);
         }
         catch (Exception ex) when (ex is SqliteException or IOException or UnauthorizedAccessException)
         {
             log.Error("analytics", "Export failed.", ex);
-            StatusMessage = "Export failed: " + ex.Message;
+            StatusMessage = loc.Format("stats.exportFailed", ex.Message);
         }
     }
 
@@ -263,7 +273,7 @@ public sealed class StatisticsViewModel : ObservableObject
         catch (System.ComponentModel.Win32Exception ex)
         {
             log.Warn("app", "Could not open the data folder.", ex);
-            StatusMessage = "The data folder could not be opened: " + ex.Message;
+            StatusMessage = loc.Format("stats.folderFailed", ex.Message);
         }
 
         return Task.CompletedTask;

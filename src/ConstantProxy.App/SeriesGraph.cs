@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Media;
 using ConstantProxy.Core.Analytics;
+using ConstantProxy.Core.Localization;
 using ConstantProxy.Core.Traffic;
 
 namespace ConstantProxy.App;
@@ -52,6 +53,14 @@ public sealed class SeriesGraph : FrameworkElement
         set => SetValue(EmptyTextProperty, value);
     }
 
+    public SeriesGraph()
+    {
+        Loaded += (_, _) => LocalizationSource.Instance.PropertyChanged += OnLanguageChanged;
+        Unloaded += (_, _) => LocalizationSource.Instance.PropertyChanged -= OnLanguageChanged;
+    }
+
+    private void OnLanguageChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e) => InvalidateVisual();
+
     protected override void OnRender(DrawingContext dc)
     {
         var width = ActualWidth;
@@ -92,7 +101,8 @@ public sealed class SeriesGraph : FrameworkElement
             DrawLine(dc, s, start, span, plot, max);
         }
 
-        var legend = string.Join("   ", series.Select(s => (s.Dashed ? "╌ " : "━ ") + s.Name)) + "   max " + FormatValue(max);
+        var loc = LocalizationSource.Instance.Service;
+        var legend = string.Join("   ", series.Select(s => (s.Dashed ? "╌ " : "━ ") + s.Name)) + "   " + loc.Format("graph.legend.max", FormatValue(max));
         DrawText(dc, legend, text, dpi, 10, new Point(8, 1), width, 16, centered: false);
         var local = (end - start).TotalHours > 24 ? "MM-dd HH:mm" : "HH:mm";
         DrawText(dc, start.ToLocalTime().ToString(local, CultureInfo.CurrentCulture), text, dpi, 10, new Point(8, height - 15), width, 14, centered: false);
@@ -100,12 +110,16 @@ public sealed class SeriesGraph : FrameworkElement
         DrawText(dc, endLabel, text, dpi, 10, new Point(width - 8 - (endLabel.Length * 6), height - 15), width, 14, centered: false);
     }
 
-    private string FormatValue(double value) => Unit switch
+    private string FormatValue(double value)
     {
-        GraphUnit.Rate => TrafficFormatter.FormatRate(value, CultureInfo.CurrentUICulture),
-        GraphUnit.Milliseconds => $"{value:0} ms",
-        _ => $"{value:0}%",
-    };
+        var loc = LocalizationSource.Instance.Service;
+        return Unit switch
+        {
+            GraphUnit.Rate => LocalizedText.Rate(loc, value),
+            GraphUnit.Milliseconds => loc.Format("unit.ms", value.ToString("0", loc.Culture)),
+            _ => loc.Format("stats.percent", value.ToString("0", loc.Culture)),
+        };
+    }
 
     private static void DrawLine(DrawingContext dc, GraphSeries series, DateTimeOffset start, double span, Rect plot, double max)
     {
