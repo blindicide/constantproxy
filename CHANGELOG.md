@@ -4,6 +4,21 @@ All notable changes to constantproxy are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.0.0] - 2026-10-01
+
+First stable release. It provides reliable SSH supervision with automatic reconnect, configurable connection profiles,
+proxy-specific traffic monitoring, historical analytics, an English and Russian interface, a system tray icon, Windows
+startup integration, GitHub-built executables and a clean upgrade path for settings and history. See the 0.1.0 – 0.9.0
+entries below for the details of each area.
+
+### Fixed
+- `constantproxy.exe --version` now prints its version when started from an interactive console (a GUI executable has no
+  stdout handle of its own); redirected output, as used by the release smoke test, is unchanged.
+
+### Changed
+- Version 1.0.0; the public configuration format (`schemaVersion` 1) and the database schema (version 1) are stable and
+  upgraded through migrations from here on.
+
 ## [0.9.0] - 2026-10-01
 
 Release candidate (feature freeze): stability, packaging and documentation.
