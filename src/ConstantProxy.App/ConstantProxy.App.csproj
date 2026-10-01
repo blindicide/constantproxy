@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>ConstantProxy.App</RootNamespace>
+    <AssemblyName>constantproxy</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ConstantProxy.Core\ConstantProxy.Core.csproj" />
+    <ProjectReference Include="..\ConstantProxy.Infrastructure\ConstantProxy.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -22,3 +22,13 @@ AGENTS.md
 requests.jsonl
 *.key
 *.token
+
+# .NET build output & test artifacts
+bin/
+obj/
+TestResults/
+*.dmp
+*.user
+.vs/
+publish/
+artifacts/
