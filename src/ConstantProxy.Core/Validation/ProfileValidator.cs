@@ -195,4 +195,26 @@ public static class ProfileValidator
 
         return result;
     }
+
+    /// <summary>Validates the profile list as a whole: unique, sensible names (SPEC §7).</summary>
+    public static ValidationResult ValidateProfileList(IReadOnlyList<Profile> profiles)
+    {
+        var result = new ValidationResult();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var profile in profiles)
+        {
+            var name = profile.Name?.Trim() ?? string.Empty;
+            if (name.Length > 0 && !seen.Add(name))
+            {
+                result.Error(nameof(Profile.Name), "profile.name.duplicate", $"More than one profile is named '{name}'.");
+            }
+
+            if (name.Length > ProfileRepository.MaxNameLength || name.Any(char.IsControl))
+            {
+                result.Error(nameof(Profile.Name), "profile.name.invalid", "Profile name is too long or contains control characters.");
+            }
+        }
+
+        return result;
+    }
 }

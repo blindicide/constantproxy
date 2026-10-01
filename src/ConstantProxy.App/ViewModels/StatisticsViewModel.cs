@@ -21,6 +21,12 @@ public enum HistoryMetric
 
 public sealed record HistoryRange(string Key, TimeSpan Span);
 
+/// <summary>Asks the user a yes/no question (for example before deleting a profile).</summary>
+public interface IConfirmDialog
+{
+    bool Confirm(string message);
+}
+
 /// <summary>Chooses where an export goes; implemented with WPF dialogs in the app and replaceable in tests.</summary>
 public interface IExportDialog
 {
@@ -222,6 +228,21 @@ public sealed class StatisticsViewModel : ObservableObject
 
     private IReadOnlyList<LocalizedOption<HistoryMetric>> BuildMetricOptions() =>
         Enum.GetValues<HistoryMetric>().Select(m => new LocalizedOption<HistoryMetric>(m, loc.Get($"metric.{m}"))).ToArray();
+
+    /// <summary>The selected profile changed: statistics are per profile (SPEC §48).</summary>
+    public void OnProfileChanged()
+    {
+        lastSummary = null;
+        if (active)
+        {
+            _ = RefreshAsync();
+        }
+        else
+        {
+            SummaryText = loc.Get(store is null ? "stats.disabled" : "stats.notLoaded");
+            Series = Array.Empty<GraphSeries>();
+        }
+    }
 
     /// <summary>Re-renders text and graph legends in the new language.</summary>
     public void OnLanguageChanged()

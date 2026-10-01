@@ -14,7 +14,7 @@ public enum TrayIconKind
 /// What the notification-area menu and icon should show for a connection state (SPEC §31). Pure so the rules are
 /// testable; the WinForms <c>NotifyIcon</c> only applies the result.
 /// </summary>
-public sealed record TrayMenuState(bool CanConnect, bool CanDisconnect, bool CanReconnect, TrayIconKind Icon)
+public sealed record TrayMenuState(bool CanConnect, bool CanDisconnect, bool CanReconnect, TrayIconKind Icon, bool CanSwitchProfile)
 {
     /// <summary>NotifyIcon.Text throws above this many characters.</summary>
     public const int MaxTooltipLength = 63;
@@ -23,6 +23,8 @@ public sealed record TrayMenuState(bool CanConnect, bool CanDisconnect, bool Can
         CanConnect: state is ConnectionState.Disconnected or ConnectionState.Failed,
         CanDisconnect: state is not (ConnectionState.Disconnected or ConnectionState.Stopping),
         CanReconnect: state is ConnectionState.Connecting or ConnectionState.Connected or ConnectionState.Degraded or ConnectionState.Reconnecting,
+        // The active profile can only change while no tunnel is running (SPEC §64: profile changes during a connection).
+        CanSwitchProfile: state is ConnectionState.Disconnected or ConnectionState.Failed,
         Icon: state switch
         {
             ConnectionState.Connected => TrayIconKind.Connected,

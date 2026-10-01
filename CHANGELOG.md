@@ -4,6 +4,15 @@ All notable changes to constantproxy are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.0] - 2026-10-01
+
+### Added
+- Multiple connection profiles: add, clone, rename (edit the name and save) and delete, with unique names (case-insensitive), at least one profile always present, and each profile keeping fully independent settings.
+- Profile selector in the main window and a "Profile" submenu in the tray menu with a check mark on the active profile; switching is only possible while no tunnel is running, and unsaved edits are kept when switching.
+- Independent analytics per profile: sessions, traffic, availability and statistics follow the selected profile; profile names are stored with the history and included in CSV/JSON session exports (`profile_name`).
+- New profiles get the next unused SOCKS port; clones copy every setting and are inserted next to their source.
+- Duplicate profile ids in a hand-edited configuration file are repaired on load.
+
 ## [0.6.0] - 2026-10-01
 
 ### Added

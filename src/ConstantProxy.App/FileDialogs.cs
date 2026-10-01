@@ -3,6 +3,12 @@ using Microsoft.Win32;
 
 namespace ConstantProxy.App;
 
+public sealed class WpfConfirmDialog : IConfirmDialog
+{
+    public bool Confirm(string message) =>
+        System.Windows.MessageBox.Show(message, ConstantProxy.Core.VersionInfo.ProductName, System.Windows.MessageBoxButton.YesNo, System.Windows.MessageBoxImage.Question) == System.Windows.MessageBoxResult.Yes;
+}
+
 public sealed class WpfExportDialog : IExportDialog
 {
     public string? PickExportPath()

@@ -248,12 +248,15 @@ public class BridgeTrafficMonitorTests
         var bridge = new BridgeTrafficMonitor();
         var profile = new Profile { Host = "h", Port = FreePort() };
 
-        for (var round = 0; round < 2; round++)
+        for (var round = 1; round <= 2; round++)
         {
             bridge.Start(profile, new SshListenOverride("127.0.0.1", backend.Port));
             using var client = await ConnectAsync(profile.Port);
             await client.SendAsync(new byte[100]);
             await ReadExactly(client, 100);
+            // Bytes are counted just after they are forwarded, so wait for the count rather than racing it.
+            var expected = new TrafficCounters(100 * round, 100 * round);
+            await TestWait.Until(() => bridge.ReadTotals() == expected, what: $"totals after round {round}");
             bridge.Stop();
         }
 

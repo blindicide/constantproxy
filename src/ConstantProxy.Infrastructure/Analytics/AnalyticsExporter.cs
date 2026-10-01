@@ -34,8 +34,9 @@ public sealed class AnalyticsExporter
         var extension = format == ExportFormat.Csv ? "csv" : "json";
         var files = new List<string>();
 
+        var names = store.GetProfileNames();
         var sessions = store.GetSessions(profileId, from, to);
-        files.Add(Write(directory, $"{prefix}-sessions.{extension}", format, SessionsCsv(sessions), sessions));
+        files.Add(Write(directory, $"{prefix}-sessions.{extension}", format, SessionsCsv(sessions, names), sessions.Select(s => SessionExportRow.From(s, names.GetValueOrDefault(s.ProfileId))).ToList()));
 
         var traffic = store.GetTrafficMinutes(profileId, from, to);
         files.Add(Write(directory, $"{prefix}-traffic.{extension}", format, TrafficCsv(traffic), traffic));
@@ -45,11 +46,22 @@ public sealed class AnalyticsExporter
         return files;
     }
 
-    public static string SessionsCsv(IEnumerable<SessionRecord> sessions)
+    /// <summary>A session with its profile's name, so exports are readable without a lookup table.</summary>
+    public sealed record SessionExportRow(
+        long Id, Guid ProfileId, string? ProfileName, DateTimeOffset StartUtc, DateTimeOffset? EndUtc, SessionEndReason? EndReason,
+        double ConnectedSeconds, int ReconnectCount, int FailureCount, int HealthFailures, long UploadedBytes, long DownloadedBytes,
+        double PeakUploadRate, double PeakDownloadRate, double AverageUploadRate, double AverageDownloadRate)
+    {
+        public static SessionExportRow From(SessionRecord s, string? profileName) => new(
+            s.Id, s.ProfileId, profileName, s.StartUtc, s.EndUtc, s.EndReason, s.ConnectedSeconds, s.ReconnectCount, s.FailureCount,
+            s.HealthFailures, s.UploadedBytes, s.DownloadedBytes, s.PeakUploadRate, s.PeakDownloadRate, s.AverageUploadRate, s.AverageDownloadRate);
+    }
+
+    public static string SessionsCsv(IEnumerable<SessionRecord> sessions, IReadOnlyDictionary<Guid, string>? profileNames = null)
     {
         var sb = new StringBuilder(CsvFormatter.Line(new object[]
         {
-            "session_id", "profile_id", "start_utc", "end_utc", "end_reason", "duration_seconds", "connected_seconds", "disconnected_seconds",
+            "session_id", "profile_id", "profile_name", "start_utc", "end_utc", "end_reason", "duration_seconds", "connected_seconds", "disconnected_seconds",
             "reconnects", "failures", "health_failures", "uploaded_bytes", "downloaded_bytes",
             "avg_upload_bytes_per_s", "avg_download_bytes_per_s", "peak_upload_bytes_per_s", "peak_download_bytes_per_s",
         }));
@@ -58,7 +70,7 @@ public sealed class AnalyticsExporter
             var duration = s.Duration?.TotalSeconds;
             sb.Append(CsvFormatter.Line(new object?[]
             {
-                s.Id, s.ProfileId, s.StartUtc, s.EndUtc, s.EndReason?.ToString(), duration is null ? null : Math.Round(duration.Value, 3), Math.Round(s.ConnectedSeconds, 3),
+                s.Id, s.ProfileId, profileNames?.GetValueOrDefault(s.ProfileId), s.StartUtc, s.EndUtc, s.EndReason?.ToString(), duration is null ? null : Math.Round(duration.Value, 3), Math.Round(s.ConnectedSeconds, 3),
                 duration is null ? null : Math.Round(Math.Max(duration.Value - s.ConnectedSeconds, 0), 3),
                 s.ReconnectCount, s.FailureCount, s.HealthFailures, s.UploadedBytes, s.DownloadedBytes,
                 Math.Round(s.AverageUploadRate, 2), Math.Round(s.AverageDownloadRate, 2), Math.Round(s.PeakUploadRate, 2), Math.Round(s.PeakDownloadRate, 2),

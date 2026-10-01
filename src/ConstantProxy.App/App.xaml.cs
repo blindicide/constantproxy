@@ -156,7 +156,7 @@ public partial class App : Application
         }
 
         var statistics = new StatisticsViewModel(store, paths, config, manager, new WpfExportDialog(), loc, log, Dispatcher);
-        viewModel = new MainViewModel(manager, sampling, recorder, statistics, startup, loc, configService, config, log, Dispatcher);
+        viewModel = new MainViewModel(manager, sampling, recorder, statistics, startup, loc, new WpfConfirmDialog(), configService, config, log, Dispatcher);
 
         window = new MainWindow { DataContext = viewModel };
         MainWindow = window;
@@ -168,9 +168,11 @@ public partial class App : Application
                 Connect: () => _ = viewModel.ConnectFromTrayAsync(),
                 Disconnect: () => _ = viewModel.DisconnectFromTrayAsync(),
                 Reconnect: () => _ = viewModel.ReconnectFromTrayAsync(),
+                SelectProfile: id => viewModel.SelectProfileFromTray(id),
                 Settings: () => ShowMainWindow(openSettings: true),
                 Exit: () => _ = RequestExitAsync()));
         viewModel.StateChangedForTray += _ => RefreshTray();
+        viewModel.ProfilesChanged += RefreshTray;
         loc.LanguageChanged += () => Dispatcher.BeginInvoke(() =>
         {
             tray?.SetTexts(BuildTrayTexts());
@@ -197,7 +199,7 @@ public partial class App : Application
 
     private TrayTexts BuildTrayTexts() => new(
         loc!.Get("tray.open"), loc.Get("tray.connect"), loc.Get("tray.disconnect"),
-        loc.Get("tray.reconnect"), loc.Get("tray.settings"), loc.Get("tray.exit"));
+        loc.Get("tray.reconnect"), loc.Get("tray.profile"), loc.Get("tray.settings"), loc.Get("tray.exit"));
 
     private void RefreshTray()
     {
@@ -206,7 +208,9 @@ public partial class App : Application
             return;
         }
 
-        tray.Update(viewModel.CurrentState, loc.Format("tray.tooltip", LocalizedText.State(loc, viewModel.CurrentState)));
+        tray.SetProfiles(viewModel.Profiles.Select(p => (p.Id, p.Name)).ToList(), viewModel.ActiveProfile.Id);
+        var name = viewModel.ActiveProfile.Name;
+        tray.Update(viewModel.CurrentState, $"{loc.Format("tray.tooltip", LocalizedText.State(loc, viewModel.CurrentState))} ({name})");
     }
 
     /// <summary>Brings the main window to the foreground, restoring it from the tray or a minimized state.</summary>
