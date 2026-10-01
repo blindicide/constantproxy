@@ -4,6 +4,18 @@ namespace ConstantProxy.Core.Models;
 /// One SSH SOCKS tunnel configuration. Defaults exist only for convenience; the SSH target is intentionally empty
 /// and must be supplied by the user (SPEC §2.2, §6).
 /// </summary>
+public enum TrafficMode
+{
+    /// <summary>
+    /// constantproxy listens on the configured port and relays to ssh on an internal loopback port, counting
+    /// exactly the bytes that pass through. Accurate without elevated privileges or unrelated system traffic.
+    /// </summary>
+    Bridge,
+
+    /// <summary>ssh listens on the configured port directly; no traffic figures are available.</summary>
+    Off,
+}
+
 public sealed class Profile
 {
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -40,6 +52,9 @@ public sealed class Profile
     public ReconnectSettings Reconnect { get; set; } = new();
 
     public HealthCheckSettings Monitoring { get; set; } = new();
+
+    /// <summary>How proxy traffic is measured (SPEC §16).</summary>
+    public TrafficMode TrafficMode { get; set; } = TrafficMode.Bridge;
 
     public Profile Clone()
     {

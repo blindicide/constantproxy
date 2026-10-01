@@ -9,3 +9,5 @@ global using ConstantProxy.Infrastructure.Logging;
 global using ConstantProxy.Infrastructure.Ssh;
 global using ConstantProxy.Tests.Support;
 global using ConstantProxy.Infrastructure.Network;
+global using ConstantProxy.Core.Traffic;
+global using ConstantProxy.Infrastructure.Traffic;

@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Net;
+using ConstantProxy.Core.Traffic;
 
 namespace ConstantProxy.Core.Ssh;
 
@@ -7,10 +8,10 @@ namespace ConstantProxy.Core.Ssh;
 public static class SshArgumentBuilder
 {
     /// <summary>
-    /// Builds the argument list. <paramref name="listenPortOverride"/> lets the traffic bridge (v0.3.0) move
-    /// ssh's local listener to an internal port while the profile port stays user-facing.
+    /// Builds the argument list. <paramref name="listen"/> lets the traffic bridge move ssh's local listener to an
+    /// internal loopback endpoint while the profile's port stays the user-facing one.
     /// </summary>
-    public static IReadOnlyList<string> Build(Profile profile, int? listenPortOverride = null)
+    public static IReadOnlyList<string> Build(Profile profile, SshListenOverride? listen = null)
     {
         var args = new List<string>();
         if (profile.IPv4Only)
@@ -20,7 +21,7 @@ public static class SshArgumentBuilder
 
         args.Add("-N");
         args.Add("-D");
-        args.Add(FormatEndpoint(profile.BindAddress, listenPortOverride ?? profile.Port));
+        args.Add(FormatEndpoint(listen?.Address ?? profile.BindAddress, listen?.Port ?? profile.Port));
 
         AddOption(args, "ServerAliveInterval", profile.ServerAliveInterval.ToString(CultureInfo.InvariantCulture));
         AddOption(args, "ServerAliveCountMax", profile.ServerAliveCountMax.ToString(CultureInfo.InvariantCulture));

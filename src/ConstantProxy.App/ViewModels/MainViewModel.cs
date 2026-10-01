@@ -8,6 +8,7 @@ using ConstantProxy.Core.Logging;
 using ConstantProxy.Core.Models;
 using ConstantProxy.Core.Presentation;
 using ConstantProxy.Core.Ssh;
+using ConstantProxy.Core.Traffic;
 using ConstantProxy.Core.Validation;
 using ConstantProxy.Infrastructure.Config;
 using ConstantProxy.Infrastructure.Logging;
@@ -21,6 +22,7 @@ namespace ConstantProxy.App.ViewModels;
 public sealed class MainViewModel : ObservableObject
 {
     private readonly ConnectionManager manager;
+    private readonly TrafficSamplingService traffic;
     private readonly ConfigurationService configuration;
     private readonly AppConfig config;
     private readonly AppLog log;
@@ -49,10 +51,23 @@ public sealed class MainViewModel : ObservableObject
     private bool healthEnabled;
     private string healthHost;
     private string healthPort;
+    private bool measureTraffic;
+    private int graphWindowSeconds = 60;
+    private IReadOnlyList<TrafficPoint> graphPoints = Array.Empty<TrafficPoint>();
+    private string downloadRateText = Unavailable;
+    private string uploadRateText = Unavailable;
+    private string downloadTotalText = Unavailable;
+    private string uploadTotalText = Unavailable;
+    private string peakText = string.Empty;
+    private string averageText = string.Empty;
 
-    public MainViewModel(ConnectionManager manager, ConfigurationService configuration, AppConfig config, AppLog log, Dispatcher dispatcher)
+    // Phase 6 moves this literal into the localization resources.
+    private const string Unavailable = "Unavailable";
+
+    public MainViewModel(ConnectionManager manager, TrafficSamplingService traffic, ConfigurationService configuration, AppConfig config, AppLog log, Dispatcher dispatcher)
     {
         this.manager = manager;
+        this.traffic = traffic;
         this.configuration = configuration;
         this.config = config;
         this.log = log;
@@ -71,6 +86,7 @@ public sealed class MainViewModel : ObservableObject
         healthEnabled = p.Monitoring.Enabled;
         healthHost = p.Monitoring.TargetHost;
         healthPort = p.Monitoring.TargetPort.ToString(CultureInfo.InvariantCulture);
+        measureTraffic = p.TrafficMode == TrafficMode.Bridge;
 
         ConnectCommand = new RelayCommand(ConnectAsync, () => State is ConnectionState.Disconnected or ConnectionState.Failed);
         DisconnectCommand = new RelayCommand(manager.DisconnectAsync, () => State != ConnectionState.Disconnected);
@@ -78,6 +94,7 @@ public sealed class MainViewModel : ObservableObject
 
         manager.StateChanged += change => dispatcher.BeginInvoke(() => OnStateChanged(change));
         manager.HealthChecked += _ => dispatcher.BeginInvoke(RefreshSession);
+        traffic.Sampled += _ => dispatcher.BeginInvoke(RefreshTraffic);
         log.EntryAdded += entry => dispatcher.BeginInvoke(() => AppendLog(entry));
         foreach (var entry in log.Snapshot())
         {
@@ -167,6 +184,36 @@ public sealed class MainViewModel : ObservableObject
         private set => SetProperty(ref reconnectCount, value);
     }
 
+    public string DownloadRateText { get => downloadRateText; private set => SetProperty(ref downloadRateText, value); }
+
+    public string UploadRateText { get => uploadRateText; private set => SetProperty(ref uploadRateText, value); }
+
+    public string DownloadTotalText { get => downloadTotalText; private set => SetProperty(ref downloadTotalText, value); }
+
+    public string UploadTotalText { get => uploadTotalText; private set => SetProperty(ref uploadTotalText, value); }
+
+    public string PeakText { get => peakText; private set => SetProperty(ref peakText, value); }
+
+    public string AverageText { get => averageText; private set => SetProperty(ref averageText, value); }
+
+    public IReadOnlyList<TrafficPoint> GraphPoints { get => graphPoints; private set => SetProperty(ref graphPoints, value); }
+
+    public int GraphWindowSeconds
+    {
+        get => graphWindowSeconds;
+        set
+        {
+            if (SetProperty(ref graphWindowSeconds, value))
+            {
+                RefreshTraffic();
+            }
+        }
+    }
+
+    public IReadOnlyList<int> GraphWindows { get; } = new[] { 60, 300, 3600 };
+
+    public bool MeasureTraffic { get => measureTraffic; set => SetProperty(ref measureTraffic, value); }
+
     public string LatencyText
     {
         get => latencyText;
@@ -219,6 +266,7 @@ public sealed class MainViewModel : ObservableObject
     {
         closing = true;
         timer.Stop();
+        await traffic.StopAsync();
         log.Info("app", "Application shutting down");
         await manager.DisposeAsync();
     }
@@ -276,6 +324,7 @@ public sealed class MainViewModel : ObservableObject
         candidate.Monitoring.Enabled = HealthEnabled;
         candidate.Monitoring.TargetHost = HealthHost.Trim();
         candidate.Monitoring.TargetPort = healthPortValue;
+        candidate.TrafficMode = MeasureTraffic ? TrafficMode.Bridge : TrafficMode.Off;
 
         var result = ProfileValidator.Validate(candidate);
         errors.AddRange(result.Errors.Select(i => i.Message));
@@ -339,7 +388,43 @@ public sealed class MainViewModel : ObservableObject
             timer.Start(); // the 1 Hz timer only runs while a session exists
         }
 
+        if (change.Old is ConnectionState.Disconnected or ConnectionState.Failed && change.New == ConnectionState.Starting)
+        {
+            traffic.StartSession();
+        }
+        else if (change.New is ConnectionState.Disconnected or ConnectionState.Failed)
+        {
+            _ = StopSamplingAsync();
+        }
+
         RefreshSession();
+    }
+
+    private async Task StopSamplingAsync()
+    {
+        await traffic.StopAsync();
+        await dispatcher.BeginInvoke(RefreshTraffic);
+    }
+
+    private void RefreshTraffic()
+    {
+        var s = traffic.Statistics;
+        var culture = CultureInfo.CurrentUICulture;
+        if (!s.IsAvailable)
+        {
+            DownloadRateText = UploadRateText = DownloadTotalText = UploadTotalText = Unavailable;
+            PeakText = AverageText = string.Empty;
+            GraphPoints = Array.Empty<TrafficPoint>();
+            return;
+        }
+
+        DownloadRateText = TrafficFormatter.FormatRate(s.CurrentDownloadRate ?? 0, culture);
+        UploadRateText = TrafficFormatter.FormatRate(s.CurrentUploadRate ?? 0, culture);
+        DownloadTotalText = TrafficFormatter.FormatBytes(s.SessionDownloadBytes ?? 0, culture);
+        UploadTotalText = TrafficFormatter.FormatBytes(s.SessionUploadBytes ?? 0, culture);
+        PeakText = $"Peak ↓ {TrafficFormatter.FormatRate(s.PeakDownloadRate, culture)}  ↑ {TrafficFormatter.FormatRate(s.PeakUploadRate, culture)}";
+        AverageText = $"Average ↓ {TrafficFormatter.FormatRate(s.AverageDownloadRate, culture)}  ↑ {TrafficFormatter.FormatRate(s.AverageUploadRate, culture)}";
+        GraphPoints = s.Recent(GraphWindowSeconds + 1);
     }
 
     private void RefreshSession()
