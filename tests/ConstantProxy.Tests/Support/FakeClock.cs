@@ -17,6 +17,9 @@ public sealed class FakeClock : IClock
 
     public bool BlockDelays { get; set; }
 
+    /// <summary>When set, delays for which this returns true block (others stay instant); lets one clock drive several loops.</summary>
+    public Func<TimeSpan, bool>? BlockWhen { get; set; }
+
     public List<TimeSpan> RecordedDelays { get; } = new();
 
     public void Advance(TimeSpan by)
@@ -33,7 +36,7 @@ public sealed class FakeClock : IClock
         lock (gate)
         {
             RecordedDelays.Add(delay);
-            if (!BlockDelays)
+            if (!BlockDelays && !(BlockWhen?.Invoke(delay) ?? false))
             {
                 now += delay;
                 return Task.CompletedTask;

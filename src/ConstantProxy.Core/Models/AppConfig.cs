@@ -7,6 +7,17 @@ public enum LogVerbosity
 }
 
 /// <summary>Root of the user configuration file (SPEC §22). Kept separate from the analytics database.</summary>
+public sealed class AnalyticsConfig
+{
+    public bool StoreHistory { get; set; } = true;
+
+    /// <summary>Days of history to keep; 0 keeps everything. Typical choices: 30, 90, 180, 365, 0.</summary>
+    public int RetentionDays { get; set; } = 90;
+
+    /// <summary>Empty means the default location inside the per-user data directory.</summary>
+    public string DatabasePath { get; set; } = string.Empty;
+}
+
 public sealed class AppConfig
 {
     public const int CurrentSchemaVersion = 1;
@@ -19,6 +30,9 @@ public sealed class AppConfig
 
     public LogVerbosity LogVerbosity { get; set; } = LogVerbosity.Normal;
 
+    /// <summary>Whether to keep history, and for how long (SPEC §28, §80).</summary>
+    public AnalyticsConfig Analytics { get; set; } = new();
+
     /// <summary>The active profile, or the first one if the stored id no longer exists.</summary>
     public Profile ActiveProfile => Profiles.FirstOrDefault(p => p.Id == ActiveProfileId) ?? Profiles[0];
 
@@ -28,6 +42,8 @@ public sealed class AppConfig
     /// </summary>
     public AppConfig Normalize()
     {
+        Analytics ??= new AnalyticsConfig();
+        Analytics.DatabasePath ??= string.Empty;
         Profiles ??= new List<Profile>();
         Profiles.RemoveAll(p => p is null);
         foreach (var p in Profiles)

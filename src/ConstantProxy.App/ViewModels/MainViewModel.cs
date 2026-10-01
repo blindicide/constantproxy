@@ -1,8 +1,8 @@
 using System.Globalization;
-using System.IO;
 using System.Text;
 using System.Windows.Media;
 using System.Windows.Threading;
+using ConstantProxy.Core.Analytics;
 using ConstantProxy.Core.Connection;
 using ConstantProxy.Core.Logging;
 using ConstantProxy.Core.Models;
@@ -23,6 +23,7 @@ public sealed class MainViewModel : ObservableObject
 {
     private readonly ConnectionManager manager;
     private readonly TrafficSamplingService traffic;
+    private readonly AnalyticsRecorder? recorder;
     private readonly ConfigurationService configuration;
     private readonly AppConfig config;
     private readonly AppLog log;
@@ -64,10 +65,12 @@ public sealed class MainViewModel : ObservableObject
     // Phase 6 moves this literal into the localization resources.
     private const string Unavailable = "Unavailable";
 
-    public MainViewModel(ConnectionManager manager, TrafficSamplingService traffic, ConfigurationService configuration, AppConfig config, AppLog log, Dispatcher dispatcher)
+    public MainViewModel(ConnectionManager manager, TrafficSamplingService traffic, AnalyticsRecorder? recorder, StatisticsViewModel statistics, ConfigurationService configuration, AppConfig config, AppLog log, Dispatcher dispatcher)
     {
         this.manager = manager;
         this.traffic = traffic;
+        this.recorder = recorder;
+        Statistics = statistics;
         this.configuration = configuration;
         this.config = config;
         this.log = log;
@@ -104,6 +107,8 @@ public sealed class MainViewModel : ObservableObject
         timer = new DispatcherTimer(DispatcherPriority.Background, dispatcher) { Interval = TimeSpan.FromSeconds(1) };
         timer.Tick += (_, _) => RefreshSession();
     }
+
+    public StatisticsViewModel Statistics { get; }
 
     public RelayCommand ConnectCommand { get; }
 
@@ -266,9 +271,16 @@ public sealed class MainViewModel : ObservableObject
     {
         closing = true;
         timer.Stop();
-        await traffic.StopAsync();
+        Statistics.Stop();
         log.Info("app", "Application shutting down");
+        recorder?.MarkShuttingDown();
         await manager.DisposeAsync();
+        await traffic.StopAsync();
+        if (recorder is not null)
+        {
+            recorder.RecordApplicationEvent(ConnectionEventType.ApplicationExit);
+            await recorder.DisposeAsync();
+        }
     }
 
     private async Task ConnectAsync()

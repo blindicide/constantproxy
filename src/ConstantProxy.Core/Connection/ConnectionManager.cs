@@ -24,6 +24,7 @@ public sealed class ConnectionManager : IAsyncDisposable
     private readonly object sync = new();
 
     private Run? run;
+    private Profile? sessionProfile;
     private ProcessInfo? currentProcess;
     private FailureInfo? lastFailure;
     private DateTimeOffset? sessionStartedUtc;
@@ -111,7 +112,7 @@ public sealed class ConnectionManager : IAsyncDisposable
 
     public Profile? ActiveProfile
     {
-        get { lock (sync) { return run?.Profile; } }
+        get { lock (sync) { return sessionProfile; } }
     }
 
     /// <summary>Starts supervising a tunnel for <paramref name="profile"/>. Returns false if one is already active.</summary>
@@ -127,10 +128,9 @@ public sealed class ConnectionManager : IAsyncDisposable
             }
 
             var snapshot = profile.Clone();
-            Raise(ConnectionEventType.ConnectionRequested, snapshot.Name);
-
             lock (sync)
             {
+                sessionProfile = snapshot;
                 sessionStartedUtc = clock.UtcNow;
                 connectedSinceUtc = null;
                 reconnectCount = 0;
@@ -139,6 +139,7 @@ public sealed class ConnectionManager : IAsyncDisposable
                 healthFailureCount = 0;
             }
 
+            Raise(ConnectionEventType.ConnectionRequested, snapshot.Name);
             Volatile.Write(ref lastFailure, null);
             traffic.ResetSession();
             machine.Transition(ConnectionState.Starting);
@@ -275,6 +276,11 @@ public sealed class ConnectionManager : IAsyncDisposable
             while (!ct.IsCancellationRequested)
             {
                 var result = await RunAttemptAsync(r, policy, attempt, ct).ConfigureAwait(false);
+                if (result.Failure is not null && !ct.IsCancellationRequested)
+                {
+                    Raise(ConnectionEventType.ConnectionLost, result.Failure.Code);
+                }
+
                 if (result.Kind == AttemptKind.Failed)
                 {
                     Fail(result.Failure!);
@@ -661,6 +667,7 @@ public sealed class ConnectionManager : IAsyncDisposable
         {
             run?.Cts.Dispose();
             run = null;
+            sessionProfile = null;
             connectedSinceUtc = null;
         }
 

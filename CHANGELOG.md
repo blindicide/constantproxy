@@ -4,6 +4,19 @@ All notable changes to constantproxy are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] - 2026-10-01
+
+### Added
+- SQLite analytics store (`Microsoft.Data.Sqlite`) with `profiles`, `sessions`, `state_intervals`, `traffic_samples` (one-minute aggregates), `connection_events`, `health_checks` and `settings` tables; timestamps are stored as UTC.
+- Forward-only migration engine tracked by `PRAGMA user_version`: each step runs in a transaction, an existing database is backed up before an upgrade, and a database from a newer version is refused instead of damaged.
+- Analytics recorder: a single background worker records sessions, state intervals, structured connection events, health checks and traffic once a minute, so neither the UI nor the supervisor ever waits on the database; storage failures are logged and contained.
+- Availability analytics: uptime percentage per session, day, 7 days and 30 days; intentional disconnects and the very first connect are not counted as outages, reconnecting, failed and degraded time are.
+- Aggregates: traffic today / this week / this month, total runtime and connected time, reconnect and failure counts, longest continuous connection.
+- Retention policy (30 days, 90 days, 180 days, 1 year or forever; default 90 days) with automatic pruning; raw health checks are kept for 7 days only.
+- Crash recovery: sessions left open by a crash are closed and marked as interrupted on the next launch; a damaged database is set aside and replaced.
+- CSV (UTF-8 with BOM, formula-safe) and JSON export of sessions, traffic and connection events.
+- Statistics tab with summary, history graphs (traffic, latency, availability over 1 hour to 30 days), export and "Open data folder".
+
 ## [0.3.0] - 2026-10-01
 
 ### Added
