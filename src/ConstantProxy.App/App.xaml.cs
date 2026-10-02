@@ -123,13 +123,6 @@ public partial class App : Application
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
         InstallCrashHandlers();
 
-        if (e.Args.Contains("--version", StringComparer.OrdinalIgnoreCase))
-        {
-            ConsoleOutput.WriteLine($"{VersionInfo.ProductName} {VersionInfo.Version}");
-            Shutdown(0);
-            return;
-        }
-
         var instanceName = SingleInstanceGuard.NameFor(Environment.UserName);
         instanceGuard = SingleInstanceGuard.TryAcquire(instanceName);
         if (instanceGuard is null)
