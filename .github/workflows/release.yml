@@ -45,7 +45,7 @@ jobs:
       - name: Publish (self-contained, single file, win-x64)
         run: >
           dotnet publish src/ConstantProxy.App -c Release -r win-x64 --self-contained true
-          -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtraction=true
+          -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
           -p:EnableCompressionInSingleFile=true -p:DebugType=none
           -p:ContinuousIntegrationBuild=true -p:SourceRevisionId=${{ github.sha }}
           -o publish
