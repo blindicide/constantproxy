@@ -57,8 +57,13 @@ jobs:
           New-Item -ItemType Directory -Force -Path $lone | Out-Null
           Copy-Item publish\constantproxy.exe $lone
           $out = Join-Path $env:RUNNER_TEMP 'version.txt'
-          Start-Process -FilePath (Join-Path $lone 'constantproxy.exe') -ArgumentList '--version' -RedirectStandardOutput $out -Wait -NoNewWindow
-          $text = (Get-Content $out -Raw).Trim()
+          $err = Join-Path $env:RUNNER_TEMP 'version-stderr.txt'
+          $process = Start-Process -FilePath (Join-Path $lone 'constantproxy.exe') -ArgumentList '--version' -RedirectStandardOutput $out -RedirectStandardError $err -Wait -NoNewWindow -PassThru
+          if ($process.ExitCode -ne 0) {
+            Get-Content $err | Write-Host
+            throw "Version command exited with code $($process.ExitCode)"
+          }
+          $text = ([string](Get-Content $out -Raw)).Trim()
           Write-Host "constantproxy printed: $text"
           if ($text -ne "constantproxy $env:VERSION") { throw "Unexpected version output '$text' (expected 'constantproxy $env:VERSION')" }
 
