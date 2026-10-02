@@ -8,6 +8,8 @@ on:
       - 'v*'   # tags are built by release.yml
   pull_request:
 
+  workflow_dispatch:
+
 permissions:
   contents: read
 
