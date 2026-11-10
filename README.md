@@ -198,4 +198,4 @@ behaves wrong.
 
 ## License
 
-[MIT](LICENSE).
+All rights reserved. See [LICENSE](LICENSE).
